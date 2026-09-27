@@ -93,6 +93,7 @@ src/dataset/                defence-noise synthesiser, SNR mixing, dataset gener
 src/utils/                  resampler, audio reader, plots
 tools/train_dnn.py          PyTorch training script for the mask estimator
 tools/make_single_file.py   rebuilds defence_anc_all_in_one.m
+jetson/                     real-time runner for NVIDIA Jetson (Python, same algorithm)
 ```
 
 ## Training / scaling up
@@ -110,10 +111,21 @@ The shipped model was trained on MS-SNSD clean speech (Edinburgh 56-speaker /
 VCTK and PTDB-TUG, 58 speakers, 3.8 h), the synthetic defence noise bank
 (2.2 h), and MS-SNSD noise (3.9 h). SNRs were drawn from −10 to +20 dB, with
 random level, EQ and reverberation. `models/defence_gru.onnx` is the same
-network for deployment with ONNX Runtime / TensorRT on a Jetson:
+network exported for ONNX Runtime / TensorRT, and `models/defence_gru.npz`
+holds the same weights for NumPy.
+
+## Deploying on NVIDIA Jetson
+
+`jetson/anc_jetson.py` runs the same algorithm in real time on a Jetson (or
+any Linux PC): microphone → noise canceller → headphones, in 8 ms blocks.
+Its output matches the MATLAB output to < 3·10⁻⁶. Step-by-step setup (JetPack,
+audio devices, live demo, TensorRT, autostart) is in
+[`jetson/README.md`](jetson/README.md).
 
 ```bash
-trtexec --onnx=models/defence_gru.onnx --saveEngine=defence_gru.plan --fp16
+pip3 install numpy soundfile sounddevice onnxruntime
+python3 jetson/anc_jetson.py --file audio/noisy/defence_sound.mp3 --out cleaned.wav
+python3 jetson/anc_jetson.py --live --in-dev 11 --out-dev 11     # see --list-devices
 ```
 
 ## Credits and licences

@@ -1,0 +1,4 @@
+numpy>=1.21
+soundfile>=0.12
+sounddevice>=0.4
+onnxruntime>=1.16    # optional: CPU inference (else the numpy backend is used)

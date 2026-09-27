@@ -480,7 +480,7 @@ function [y, fs_out, info] = defence_anc(x, fs, p)
         end
     end
 
-    % ---- (1) resample + high-pass ----------------------------------------
+    % ---- (1) resample + DC blocker ---------------------------------------
     fs_out = p.fs;
     if strcmp(mode, 'single-mic')
         xr = resample_k(x(:, 1), p.fs, fs);
