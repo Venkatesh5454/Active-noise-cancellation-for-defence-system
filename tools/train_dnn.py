@@ -199,6 +199,9 @@ def export(model, out_dir):
         "frame": N, "hop": R, "fs": FS,
     }
     scipy.io.savemat(os.path.join(out_dir, "defence_gru.mat"), mat, do_compression=True)
+    np.savez_compressed(os.path.join(out_dir, "defence_gru.npz"),        # jetson numpy backend
+                        **{k: np.asarray(v, np.float64) for k, v in mat.items()
+                           if k not in ("frame", "hop", "fs")})
 
     class Step(nn.Module):                      # one frame, explicit state
         def __init__(self, m):
