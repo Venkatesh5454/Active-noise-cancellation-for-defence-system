@@ -275,11 +275,13 @@ for the whine. What we learned:
 ### 4.5 Adding the AI part
 So we taught a small network to make that decision instead:
 
-* **Data:** 3.8 hours of clean speech from 58 speakers (the MS-SNSD corpus,
-  built from the Edinburgh VCTK and PTDB-TUG recordings), mixed on the fly
-  with 2.2 hours of our synthetic defence noise and 3.9 hours of everyday
-  noise from MS-SNSD. Loudness ratios ranged from −10 to +20 dB, with random
-  volume, microphone colouring and room echo.
+* **Data:** 3.8 hours of clean speech from 58 speakers (from Microsoft's
+  MS-SNSD toolkit, which takes it from the Edinburgh noisy-speech database of
+  VCTK speakers), mixed on the fly with 2.2 hours of our synthetic defence
+  noise and 3.9 hours of everyday noise from MS-SNSD. Loudness ratios ranged
+  from −10 to +20 dB, with random volume, microphone colouring and room echo.
+  [dataset/README.md](dataset/README.md) describes every file, how each part
+  was made, and how to rebuild the exact training examples.
 * **Model:** the dense → GRU → dense network from Step 4. It is *causal*: it
   never looks into the future, so it can run live.
 * **Training:** PyTorch (`tools/train_dnn.py`). The loss compares compressed
@@ -407,6 +409,12 @@ be tried on real Jetson hardware.
 
 ## 8. Training your own model / making it better
 
+The training data of the shipped model (speech, defence noise, everyday
+noise and 160 example pairs) is shared as zip files and fully documented in
+[dataset/README.md](dataset/README.md): what each part is, where it came
+from, how we made it, its licences, and how to rebuild everything from
+scratch. The audio itself is not stored in this repository.
+
 **1. Generate the defence-noise bank in MATLAB**
 
 ```matlab
@@ -426,6 +434,18 @@ pip install torch soundfile scipy onnx
 python tools/train_dnn.py --speech <folder_with_clean_speech> \
        --noise noisebank <other_noise_folders> --out models --steps 20000
 ```
+
+The first folder after `--noise` is the defence noise (70 % of examples).
+WAV and FLAC files are both accepted. With the folders of the training-data
+package this is
+
+```bash
+python tools/train_dnn.py --speech speech_clean \
+       --noise noise_defence_synthetic noise_general --out models --steps 20000
+```
+
+and `tools/make_training_pairs.py` writes the same noisy/clean mixtures to
+disk if you want to inspect them or use them in another framework.
 
 This writes a new `models/defence_gru.mat` (picked up by MATLAB
 automatically), `models/defence_gru.onnx` (Jetson / TensorRT) and
@@ -469,7 +489,8 @@ audio/noisy/                the sample defence recordings
 audio/clean/                clean test speech (CMU ARCTIC)
 results/                    cleaned versions of the sample recordings
 jetson/                     Jetson runner + step-by-step deployment guide
-tools/                      training script and single-file bundler
+tools/                      training script, training-pair writer, single-file bundler
+dataset/                    training-data guide, licences, file lists and helper scripts
 docs/images/                figures used in this README
 ```
 
@@ -501,9 +522,11 @@ docs/images/                figures used in this README
 
 * Clean test speech: CMU ARCTIC (Carnegie Mellon University). See
   `audio/clean/LICENSE_CMU_ARCTIC.txt`.
-* Training data: MS-SNSD (Microsoft, MIT licence), which contains the
-  Edinburgh 56-speaker dataset (CC BY 4.0), PTDB-TUG (ODbL), Freesound CC0
-  clips and DEMAND (CC BY-SA 3.0).
+* Training data: clean speech from the Edinburgh noisy-speech database
+  (CC BY 4.0) and noise from Freesound (CC0) and DEMAND (CC BY-SA 3.0), all
+  obtained through Microsoft MS-SNSD (code under the MIT licence), plus our
+  own synthetic defence noise. Details and citations:
+  [dataset/LICENSES.md](dataset/LICENSES.md).
 * Generalisation tests only (not included here): ESC-50 environmental sounds
   (CC BY-NC 3.0).
 

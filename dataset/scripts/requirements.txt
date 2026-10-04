@@ -1,0 +1,7 @@
+# reading, writing and mixing the audio (make_training_pairs.py, download_mssnsd_subset.py, flac_to_wav.py)
+numpy
+soundfile
+# training the network (train_dnn.py)
+torch
+scipy
+onnx

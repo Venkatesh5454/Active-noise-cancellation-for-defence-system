@@ -103,7 +103,8 @@ class MaskGRU(nn.Module):
 # --------------------------------------------------------------------------
 def load_dir(d, min_len):
     out = []
-    for f in sorted(glob.glob(os.path.join(d, "*.wav"))):
+    files = sorted(glob.glob(os.path.join(d, "*.wav")) + glob.glob(os.path.join(d, "*.flac")))
+    for f in files:
         x, fs = sf.read(f, dtype="float32", always_2d=True)
         x = x.mean(1)
         if fs != FS or len(x) < min_len:
@@ -236,6 +237,7 @@ def main():
     ap.add_argument("--seed", type=int, default=0)
     a = ap.parse_args()
     random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
+    os.makedirs(a.out, exist_ok=True)
 
     L = int(a.seconds * FS)
     speech = load_dir(a.speech, 4000)

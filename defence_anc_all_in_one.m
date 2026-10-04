@@ -994,8 +994,8 @@ function make_dataset(clean_dir, out_dir, n_pairs, snr_range, noise_types)
             'missile', 'drone', 'siren', 'vehicle', 'hum', 'wind', 'battlefield'};
     end
     fs = 16000;
-    files = dir(fullfile(clean_dir, '*.wav'));
-    if isempty(files), error('make_dataset: no .wav files in %s', clean_dir); end
+    files = [dir(fullfile(clean_dir, '*.wav')); dir(fullfile(clean_dir, '*.flac'))];
+    if isempty(files), error('make_dataset: no .wav or .flac files in %s', clean_dir); end
     if ~exist(fullfile(out_dir, 'clean'), 'dir'), mkdir(fullfile(out_dir, 'clean')); end
     if ~exist(fullfile(out_dir, 'noisy'), 'dir'), mkdir(fullfile(out_dir, 'noisy')); end
     fid = fopen(fullfile(out_dir, 'manifest.csv'), 'w');

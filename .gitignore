@@ -2,3 +2,10 @@ dist/
 *.asv
 *.pt
 __pycache__/
+# training audio: shared as zip files, never committed (see dataset/README.md)
+dataset/speech_clean/
+dataset/noise_defence_synthetic/
+dataset/noise_general/
+dataset/example_pairs/
+dataset/training_pairs/
+defence_anc_training_data/
