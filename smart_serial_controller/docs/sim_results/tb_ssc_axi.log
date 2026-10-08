@@ -1,0 +1,17 @@
+### tb_ssc_axi: the Way 2 hardware path (AXI4-Lite -> APB -> controller)
+==============================================================
+ Way 2 hardware path: AXI4-Lite -> APB bridge -> controller
+==============================================================
+    ok    ID over AXI = 0x53534301
+    ok    scratch, W after AW = 0x11112222
+    ok    scratch, W before AW = 0x33334444
+    ok    UART loop-back bytes correct = 0x10
+    ok    flash JEDEC ID = 0x20ba19
+    ok    IRQ line raised by I2C_DONE
+    ok    IRQ line cleared by write-1-to-clear
+    ok    PmodTMP2 bytes (25.0 C) = 0xc80
+    ok    I2C idle, no NACK, no ARB_LOST = 0x0
+==============================================================
+ ALL 9 CHECKS PASSED
+==============================================================
+

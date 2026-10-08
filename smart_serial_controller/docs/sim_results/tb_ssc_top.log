@@ -1,0 +1,96 @@
+### tb_ssc_top: the controller on its own (APB, all protocols)
+==============================================================
+ Smart Serial Controller - full system testbench
+==============================================================
+
+[1] Register bank: ID and scratch register
+
+[2] UART TX: send 'A' (0x41) at 115200 8N1 - the slide 9 example
+        line: start 0 | 1 0 0 0 0 0 1 0 | stop 1
+
+[3] UART RX: terminal types "Hello", CPU reads the RX FIFO
+
+[4] UART frame formats (both directions) at 460800 baud
+        7 data bits, parity even, 1 stop bit(s): ok
+        5 data bits, parity none, 2 stop bit(s): ok
+        6 data bits, parity odd, 1 stop bit(s): ok
+        8 data bits, parity odd, 2 stop bit(s): ok
+        8 data bits, parity even, 1 stop bit(s): ok
+
+[5] UART error detection: parity, framing, break
+
+[6] UART FIFO overflow (RX and TX)
+
+[7] UART RTS/CTS flow control
+
+[8] UART glitch filter and start-bit vote
+
+[9] Baud-rate accuracy at every standard speed (100 MHz clock)
+        baud     divisor        measured bit   error    integer-only divider
+          9600   651 +  1/16   104170.00 ns   0.003 %   651 ->  0.01 %
+         19200   325 +  8/16    52080.00 ns   0.006 %   326 ->  0.15 %
+         38400   162 + 12/16    26040.00 ns   0.006 %   163 ->  0.15 %
+         57600   108 +  8/16    17360.00 ns   0.006 %   109 ->  0.45 %
+        115200    54 +  4/16     8680.00 ns   0.006 %   54 ->  0.47 %
+        230400    27 +  2/16     4340.00 ns   0.006 %   27 ->  0.47 %
+        460800    13 +  9/16     2170.00 ns   0.006 %   14 ->  3.22 %
+        921600     6 + 13/16     1090.00 ns   0.454 %    7 ->  3.22 %
+        worst fractional-divider error: 0.454 %
+
+[10] UART long random run: 240 bytes, internal loopback, random formats
+
+[11] SPI: read the PmodSF3 JEDEC ID (command 0x9F)
+        ID = 20 ba 19
+
+[12] SPI: erase, page program and read back the flash
+
+[13] SPI master: 4 modes x word sizes 4..32 x MSB/LSB first
+        48 of 48 combinations correct
+
+[14] SPI clean abort in the middle of a transfer
+        slave received 2 complete words before the abort
+
+[15] SPI slave mode: an outside master talks to the controller
+        8 of 8 slave-mode cases correct (2 words per frame)
+
+[16] SPI long random run: 200 words, internal loopback
+        200 of 200 words came back correctly
+
+[17] I2C worked example: read the PmodTMP2 temperature (100 kHz)
+        bytes 0x0c 0x80 -> 0x0c80 >> 3 = 400 -> 25.00 C
+        bus: S 96 A 00 A Sr 97 A 0c A 80 N P
+
+[18] I2C at 400 kHz (prescale 62)
+        measured SCL = 383.1 kHz, data = 0x0c80
+
+[19] I2C NACK: nobody at address 0x50
+        bus: S a0 N P
+
+[20] I2C 10-bit address 0x2A5: write two registers, read them back
+        bus: S f4 A a5 A 05 A 77 A 88 A P
+        bus: S f4 A a5 A 05 A Sr f4 A a5 A Sr f5 A 77 A 88 N P
+
+[21] I2C clock stretching: the sensor holds SCL low 30 us after each ACK
+        read took 484 us normally, 559 us with stretching (3 stretches)
+
+[22] I2C 20-byte read with a 16-entry RX FIFO (controller pauses SCL)
+        20 of 20 bytes correct
+
+[23] I2C arbitration: a second master starts at the same moment
+        bus: S 20 N P
+
+[24] I2C bus busy: we must wait for the other master's STOP
+        bus: S 20 N P S 96 A 00 A P
+
+[25] Bridge pass-through UART -> UART (hardware echo, no CPU)
+
+[26] Two-way bridge UART <-> SPI (ch0 UART->SPI, ch1 SPI->UART)
+
+[27] Bridge UART -> I2C (AUTO_WR) and I2C -> UART
+
+[28] Interrupt controller: enable mask, sticky flags, W1C, IRQ line
+
+==============================================================
+ ALL 411 CHECKS PASSED
+==============================================================
+
