@@ -11,7 +11,11 @@
 #include "xil_io.h"
 #include "xil_exception.h"
 #include "xscugic.h"
-#include "xtime_l.h"
+#ifdef SDT
+#include "xiltimer.h"   /* Vitis 2023.2+ (SDT / Unified IDE): XTime, XTime_GetTime, COUNTS_PER_SECOND */
+#else
+#include "xtime_l.h"    /* Vitis Classic 2020.2 - 2023.1 */
+#endif
 #include "ssc_driver.h"
 
 /* ------------------------------------------------------------------------- */
@@ -24,7 +28,7 @@ uint64_t ssc_time_us(void)
 {
     XTime t;
     XTime_GetTime(&t);
-    return (uint64_t)t / (COUNTS_PER_SECOND / 1000000u);
+    return (uint64_t)t / ((COUNTS_PER_SECOND) / 1000000u);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -123,9 +127,23 @@ uint32_t ssc_wait_events(uint32_t mask, uint32_t timeout_us)
     return ev;
 }
 
+/* The Cortex-A9 global timer is the XTime time base.  The Vitis 2023.2+ (SDT)
+ * BSP only starts it on the first sleep()/usleep(), so start it here if it is
+ * stopped.  Harmless in Vitis Classic, where the boot code already started it. */
+#define GTIMER_BASE 0xF8F00200u
+static void ssc_timer_start(void)
+{
+    if ((Xil_In32(GTIMER_BASE + 0x08u) & 1u) == 0u) {   /* control: timer enable */
+        Xil_Out32(GTIMER_BASE + 0x00u, 0u);             /* counter, low word  */
+        Xil_Out32(GTIMER_BASE + 0x04u, 0u);             /* counter, high word */
+        Xil_Out32(GTIMER_BASE + 0x08u, 1u);             /* enable             */
+    }
+}
+
 int ssc_init(void)
 {
-    if (ssc_rd(SSC_ID) != SSC_ID_VALUE) return -1;   /* bitstream not loaded? */
+    ssc_timer_start();
+    if (ssc_rd(SSC_ID) != SSC_ID_VALUE) return -1;   /* wrong design or address */
     ssc_wr(SSC_BRIDGE_CTRL, 0u);
     ssc_wr(SSC_INT_ENABLE, 0u);
     ssc_wr(SSC_INT_STATUS, 0xFFFFu);

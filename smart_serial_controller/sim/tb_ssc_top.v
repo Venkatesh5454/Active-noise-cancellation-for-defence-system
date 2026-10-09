@@ -1115,7 +1115,8 @@ module tb_ssc_top;
 
     initial begin
         #(400_000_000);
-        $display("GLOBAL TIME-OUT");
+        errors = errors + 1;                     // a time-out is a failure
+        $display("GLOBAL TIME-OUT - %0d OF %0d CHECKS FAILED (counting the time-out)", errors, checks + 1);
         $finish;
     end
 

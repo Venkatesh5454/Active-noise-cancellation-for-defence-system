@@ -18,7 +18,11 @@
  * ===========================================================================*/
 #include <string.h>
 #include "xil_printf.h"
-#include "xtime_l.h"
+#ifdef SDT
+#include "xiltimer.h"   /* Vitis 2023.2+ (SDT / Unified IDE): XTime, XTime_GetTime, COUNTS_PER_SECOND */
+#else
+#include "xtime_l.h"    /* Vitis Classic 2020.2 - 2023.1 */
+#endif
 #include "ssc_driver.h"
 
 extern char inbyte(void);              /* standalone BSP: read the console UART */
@@ -203,10 +207,22 @@ static void cmd_bridge(const char *arg)
         ssc_wr(SSC_I2C_ADDR, TMP2_ADDR);
         (void)ssc_take_events(SSC_INT_I2C_DONE);
         ssc_wr(SSC_I2C_TXDATA, 0x00u);
-        ssc_wr(SSC_I2C_CMD, I2C_CMD_LEN(1));
-        (void)ssc_wait_events(SSC_INT_I2C_DONE, 100000u);
+        ssc_wr(SSC_I2C_CMD, I2C_CMD_LEN(1));                     /* pointer, keep bus */
+        if (!ssc_wait_events(SSC_INT_I2C_DONE, 100000u) ||
+            (ssc_rd(SSC_I2C_STATUS) & (I2C_ST_NACK | I2C_ST_ARB_LOST))) {
+            ssc_wr(SSC_I2C_CTRL, I2C_CTRL_EN | I2C_CTRL_ABORT);
+            ssc_wr(SSC_BRIDGE_CTRL, 0u);
+            xil_printf("I2C error: %s\r\n", err_text(SSC_ENACK));
+            return;
+        }
         ssc_wr(SSC_I2C_CMD, I2C_CMD_LEN(2) | I2C_CMD_READ | I2C_CMD_STOP);
-        (void)ssc_wait_events(SSC_INT_I2C_DONE, 100000u);
+        if (!ssc_wait_events(SSC_INT_I2C_DONE, 100000u) ||
+            (ssc_rd(SSC_I2C_STATUS) & (I2C_ST_NACK | I2C_ST_ARB_LOST))) {
+            ssc_wr(SSC_I2C_CTRL, I2C_CTRL_EN | I2C_CTRL_ABORT);
+            ssc_wr(SSC_BRIDGE_CTRL, 0u);
+            xil_printf("I2C error: %s\r\n", err_text(SSC_ENACK));
+            return;
+        }
         xil_printf("2 temperature bytes went I2C -> UART by hardware (view the\r\n"
                    "PmodUSBUART terminal in hex mode: 0C 80 at 25 C).\r\n");
         bridge_counts();
@@ -228,7 +244,7 @@ static void cmd_bench(void)
     XTime_GetTime(&t0);                              /* 1) let the FIFO do the work */
     for (i = 0; i < 16u; i++) ssc_wr(SSC_UART_TXDATA, 'A' + i);
     XTime_GetTime(&t1);
-    ns_fifo = (uint32_t)((t1 - t0) * 1000000000ull / COUNTS_PER_SECOND);
+    ns_fifo = (uint32_t)((t1 - t0) * 1000000000ull / (COUNTS_PER_SECOND));
     while ((ssc_rd(SSC_UART_STATUS) & (ST_TX_EMPTY | ST_BUSY)) != ST_TX_EMPTY) { }
 
     XTime_GetTime(&t0);                              /* 2) one byte at a time */
@@ -237,7 +253,7 @@ static void cmd_bench(void)
         while ((ssc_rd(SSC_UART_STATUS) & (ST_TX_EMPTY | ST_BUSY)) != ST_TX_EMPTY) { }
     }
     XTime_GetTime(&t1);
-    us_poll = (uint32_t)((t1 - t0) * 1000000ull / COUNTS_PER_SECOND);
+    us_poll = (uint32_t)((t1 - t0) * 1000000ull / (COUNTS_PER_SECOND));
     ssc_uart_puts("\r\n");
 
     xil_printf("16 bytes at 115200 baud (about 1389 us on the wire):\r\n");
@@ -268,6 +284,8 @@ int main(void)
     char line[100];
 
     xil_printf("\r\n\r\n=== Smart Serial Controller - Way 2 (ARM + FPGA) ===\r\n");
+    xil_printf("reading the controller ID at 0x%08x (a hang here = bitstream not loaded)\r\n",
+               SSC_BASEADDR);
     if (ssc_init() != 0) {
         xil_printf("ERROR: ID register reads 0x%08x, expected 0x53534301.\r\n"
                    "Is the bitstream loaded, and is SSC_BASEADDR (0x%08x) right?\r\n",

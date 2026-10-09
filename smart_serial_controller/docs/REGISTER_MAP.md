@@ -93,7 +93,7 @@ Chip select works in one of two ways:
 | Offset | Name | Access | Bits |
 |---|---|---|---|
 | `0x300` | I2C_CTRL | RW | `[0]` EN, `[1]` AUTO_WR (bridge mode: each TX byte becomes a 1-byte write to ADDR). W1: `[16]` TX_FLUSH, `[17]` RX_FLUSH, `[18]` ABORT |
-| `0x304` | I2C_PRESCALE | RW | f_SCL ≈ 100 MHz / (4 × (P + 1)). Use 249 for 100 kHz (the reset value) or 62 for about 390 kHz. |
+| `0x304` | I2C_PRESCALE | RW | f_SCL ≈ 100 MHz / (4 × (P + 1)). Use 249 for 100 kHz (the reset value) or 62 for 400 kHz mode. At 62 the nominal rate is 397 kHz, and test [18] measured 383 kHz because of the bus rise time. |
 | `0x308` | I2C_ADDR | RW | `[9:0]` slave address, `[15]` TEN_BIT |
 | `0x30C` | I2C_CMD | WO | `[7:0]` LEN, `[8]` READ, `[9]` STOP, `[10]` STOP_ONLY. Writing this register starts the transaction. |
 | `0x310` | I2C_STATUS | RO | Common layout, plus `[5]` HOLDING (bus kept for a repeated START), `[6]` NACK, `[7]` ARB_LOST, `[24]` BUS_BUSY, `[25]` SCL level, `[26]` SDA level |

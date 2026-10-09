@@ -22,10 +22,10 @@ module zed_top_standalone (
     inout  wire       spi_mosi,     // JB2
     inout  wire       spi_miso,     // JB3
     inout  wire       spi_sclk,     // JB4
-    output wire       spi_wp_n,     // JB7
-    output wire       spi_hold_n,   // JB8
-    output wire       spi_cs1_n,    // JB9
-    output wire       spi_cs2_n,    // JB10
+    output wire       spi_cs1_n,    // JB7  spare CS1# (NC on the PmodSF3)
+    output wire       spi_rst_n,    // JB8  PmodSF3 RST#  (held high)
+    output wire       spi_wp_n,     // JB9  PmodSF3 WP#   (held high)
+    output wire       spi_hold_n,   // JB10 PmodSF3 HOLD# (held high)
     // JC: PmodTMP2 I2C temperature sensor
     inout  wire       i2c_scl,      // JC3
     inout  wire       i2c_sda,      // JC4
@@ -97,8 +97,8 @@ module zed_top_standalone (
         .aux({rst_n, err_flag}),         // LD7 = running, LD6 = last command failed
         .pad_spi_cs_n(spi_cs_n), .pad_spi_mosi(spi_mosi),
         .pad_spi_miso(spi_miso), .pad_spi_sclk(spi_sclk),
+        .pad_spi_cs1_n(spi_cs1_n), .pad_spi_rst_n(spi_rst_n),
         .pad_spi_wp_n(spi_wp_n), .pad_spi_hold_n(spi_hold_n),
-        .pad_spi_cs1_n(spi_cs1_n), .pad_spi_cs2_n(spi_cs2_n),
         .pad_i2c_scl(i2c_scl), .pad_i2c_sda(i2c_sda),
         .la(la), .led(led)
     );

@@ -4,6 +4,18 @@ This is Project 10, "From Protocol Converter to Smart Serial Controller". It
 contains the complete Verilog design, three self-checking testbenches, Vivado
 build scripts for the ZedBoard, and the bare-metal C program for the Zynq ARM.
 
+> **New here? Start with [GETTING_STARTED.md](GETTING_STARTED.md).** It is a
+> step-by-step checklist: download, install, simulate, Way 1, Way 2. On
+> Windows you do not need to type any commands. Double-click the scripts in
+> `windows\`:
+>
+> - `1_simulate.bat`
+> - `2_build_way1_fpga_only.bat`
+> - `3_build_way2_arm_fpga.bat`
+> - `4_open_project_gui.bat`
+>
+> This README is the full reference.
+
 The design follows the architecture in the slides:
 
 ```
@@ -49,6 +61,8 @@ of the Zynq-7020.
 
 ```
 smart_serial_controller/
+├── GETTING_STARTED.md      step-by-step first-day guide
+├── windows/                double-click .bat files: simulate, build Way 1, build Way 2, open the GUI
 ├── rtl/                    the controller (synthesisable Verilog)
 │   ├── ssc_sync_filter.v   2-FF synchroniser + glitch filter
 │   ├── ssc_fifo.v          16-entry FIFO
@@ -85,6 +99,8 @@ To program the controller, use [docs/REGISTER_MAP.md](docs/REGISTER_MAP.md).
 | **AMD Vitis** (install it together with Vivado) | same version as Vivado | Way 2 only: the C program for the ARM. 2023.2 and newer have the "Vitis Unified IDE"; older versions have "Vitis Classic". Both are described below. |
 | ZedBoard board files | from the Vivado Store | Way 2 only: the DDR3 and MIO settings of the Zynq |
 | Cable drivers | come with Vivado | JTAG programming. On Linux run `<Vivado>/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers` once as root. |
+| Windows: JTAG cable driver | comes with Vivado | If Hardware Manager → Auto Connect finds no target: open **cmd as Administrator**, run `cd /d C:\Xilinx\Vivado\<ver>\data\xicom\cable_drivers\nt64` (or the same folder under `C:\AMDDesignTools\<ver>\Vivado`), then run `install_drivers_wrapper.bat`. Unplug and replug J17. |
+| Windows: ZedBoard USB-UART (J14) driver | Cypress CY7C64225 USB-UART driver (Avnet ZedBoard support page / Infineon) | Only needed if no new COM port appears in Device Manager → Ports when you plug in J14. The PmodUSBUART's FTDI driver installs itself. |
 | Serial terminal | any | PuTTY or Tera Term (Windows), `screen` or `minicom` (Linux), or the serial monitor built into Vitis |
 | *Optional:* logic-analyser software | | Digilent WaveForms (Analog Discovery), Saleae Logic 2 or PulseView. All three have UART, SPI and I2C decoders. |
 | *Optional:* Icarus Verilog + GTKWave | | A free simulator, if you want to run the testbenches without Vivado |
@@ -98,6 +114,13 @@ To program the controller, use [docs/REGISTER_MAP.md](docs/REGISTER_MAP.md).
 - **PmodSF3** (32 MB SPI flash), on **JB**
 - **PmodTMP2** (ADT7420 temperature sensor), on **JC**, with both address
   jumpers **open** (address 0x4B)
+- **Recommended:** 2 × 4.7 kΩ resistors (anything from 2.2k to 10k works) as
+  I2C pull-ups:
+  - JC3 (SCL) to JC6 (3.3 V)
+  - JC4 (SDA) to JC6 (3.3 V)
+
+  The PmodTMP2 may not have its own pull-ups. The FPGA's internal pull-ups
+  usually work at 100 kHz, but they are weak.
 - *Optional:* a logic analyser on **JD**. A Digilent PmodTPH2 test-point
   header makes clipping on easy.
 
@@ -115,8 +138,8 @@ top row.
 
 | Port | Pmod | Notes |
 |---|---|---|
-| JA | PmodUSBUART | 6-pin, top row. JA1 = RTS, JA2 = RXD, JA3 = TXD, JA4 = CTS (the Pmod's own labels) |
-| JB | PmodSF3 | 12-pin, fills the whole port. JB1 = CS#, JB2 = MOSI, JB3 = MISO, JB4 = SCK, JB7/8 = WP#/HOLD# |
+| JA | PmodUSBUART | 6-pin, top row. JA1 = RTS, JA2 = RXD, JA3 = TXD, JA4 = CTS (the Pmod's own labels). Set the Pmod's power jumper **JP1 to LCL**, because the ZedBoard powers itself. |
+| JB | PmodSF3 | 12-pin, fills the whole port. JB1 = CS#, JB2 = MOSI, JB3 = MISO, JB4 = SCK. JB7 is not connected on the PmodSF3 (spare CS1#). JB8 = RST#, JB9 = WP#, JB10 = HOLD#, all held high. |
 | JC | PmodTMP2 | Its 2×4 I2C header goes into the **four columns nearest the GND/VCC end**: pins 3–6 and 9–12, so SCL = JC3 and SDA = JC4 |
 | JD | logic analyser (optional) | JD1 UART TX, JD2 UART RX, JD3 SPI SCLK, JD4 MOSI, JD7 MISO, JD8 CS#, JD9 I2C SCL, JD10 SDA. GND is on pins 5 and 11. |
 
@@ -137,16 +160,45 @@ do not have to read waveforms to know whether it works.
 | `sim/tb_ssc_axi.v` | The Way 2 hardware path: AXI4-Lite handshakes → bridge → controller, with the same register sequences the C driver uses | 0.3 ms | 9 |
 | `sim/tb_zed_standalone.v` | The complete Way 1 bitstream, with keys typed on the terminal | 26 ms | 10 |
 
-### Option A: Vivado, one command
+### Option A: Vivado, one command per testbench
 
-Open a terminal (Linux) or the **Vivado Tcl Shell** (Windows Start menu):
+> **Windows:** Vivado's output can exceed Windows' 260-character path limit.
+> Copy the `smart_serial_controller` folder to a short path such as `C:\ssc`
+> first, and run everything from there. Do not build inside
+> `Downloads\...-main\...-main\`.
+
+**Windows, easiest way:** double-click `windows\1_simulate.bat`.
+
+**Windows, by hand:** use a normal **Command Prompt** (cmd.exe), not the
+Vivado Tcl Shell:
 
 ```
-cd <path>/smart_serial_controller
-vivado -mode batch -source vivado/run_sim.tcl                              # tb_ssc_top
+call C:\Xilinx\Vivado\2023.2\settings64.bat
+cd /d C:\ssc\smart_serial_controller
+vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_ssc_top
 vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_ssc_axi
 vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_zed_standalone
 ```
+
+Change the first line to your own version and install folder, for example
+`C:\AMDDesignTools\2025.1\Vivado\settings64.bat`.
+
+**Inside the Vivado GUI Tcl Console or the Vivado Tcl Shell:** that prompt
+already is Vivado, so do not type `vivado` there. Use forward slashes:
+
+```
+cd C:/ssc/smart_serial_controller
+set argv tb_ssc_axi ; source vivado/run_sim.tcl
+```
+
+**Linux:**
+
+1. `source <Vivado>/settings64.sh`
+2. `cd` to the folder.
+3. Run the three `vivado -mode batch ...` lines shown above.
+
+Each run takes 2–5 minutes. The script stops with an error if any check
+fails.
 
 ### Option B: Vivado GUI, with waveforms
 
@@ -158,9 +210,18 @@ vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_zed_standalone
 2. In *Sources → Simulation Sources → sim_1*, right-click the testbench you
    want and choose **Set as Top**.
 3. Click **Flow Navigator → Run Simulation → Run Behavioral Simulation**.
-4. Vivado stops after 1000 ns. Type `run all` in the Tcl console at the
-   bottom. The Tcl console shows the test report.
-5. Useful signals to drag into the waveform window:
+4. Vivado stops after 1000 ns. Type these two lines in the Tcl Console at
+   the bottom:
+   ```
+   log_wave -r /
+   run all
+   ```
+   The first line records every signal, so anything you drag into the
+   waveform window afterwards still has its full history. The Tcl Console
+   shows the test report. If you already ran without `log_wave`, type
+   `restart` and then the two lines again.
+5. Useful signals to drag into the waveform window, from the *Scope* and
+   *Objects* panels:
 
    | Test | Signals |
    |---|---|
@@ -169,16 +230,35 @@ vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_zed_standalone
    | I2C | `scl`, `sda`, `dut/u_i2c/st`, `dut/u_i2c/bitn`, `dut/u_i2c/bus_busy` |
    | Bridge | `dut/u_bridge/go0`, `dut/u_bridge/go1` |
 
-### Option C: Icarus Verilog (free)
+### Option C: Icarus Verilog (free, optional)
+
+**Linux / macOS:**
 
 ```
-sh sim/run_iverilog.sh          # runs all three
-sh sim/run_iverilog.sh vcd      # also writes tb_ssc_top.vcd for GTKWave
+sh sim/run_iverilog.sh
+sh sim/run_iverilog.sh vcd
 ```
+
+The first line runs all three testbenches, which takes about 1–2 minutes.
+The second line also writes `tb_ssc_top.vcd` in this folder for GTKWave.
+
+**Windows:**
+
+1. Install Icarus Verilog from bleyer.org/icarus. Tick "Add executable
+   folder(s) to the user PATH".
+2. Install Git for Windows.
+3. Right-click the `smart_serial_controller` folder and choose **Open Git
+   Bash here**.
+4. Type `sh sim/run_iverilog.sh`.
+
+This does not work in cmd.exe or PowerShell. If you only have Vivado, use
+Option A.
 
 ### What you should see
 
-The full logs are in `docs/sim_results/`. A shortened example:
+The full logs are in `docs/sim_results/`. They were made with Icarus
+Verilog, so a Vivado run also shows Vivado's own INFO lines around the same
+testbench output. A shortened example:
 
 ```
 [2] UART TX: send 'A' (0x41) at 115200 8N1 - the slide 9 example
@@ -206,12 +286,12 @@ itself, so this is the fastest way to see the hardware work on the board.
 
 ### 4.1 Build the bitstream
 
-```
-cd <path>/smart_serial_controller
-vivado -mode batch -source vivado/build_standalone.tcl
-```
+- **Windows:** double-click `windows\2_build_way1_fpga_only.bat`.
+- **Linux, or a cmd.exe after `settings64.bat`:**
+  `vivado -mode batch -source vivado/build_standalone.tcl` from the
+  `smart_serial_controller` folder.
 
-This takes about 5 minutes. At the end it prints:
+This takes 5–15 minutes, depending on the PC. At the end it prints:
 
 ```
  Way 1 build finished
@@ -269,6 +349,10 @@ What the LEDs show:
 | LD6 | Last command failed |
 | LD7 | Running |
 
+In Way 2 (ARM + FPGA), LD0–LD5 mean the same. LD6 lights while the
+controller's interrupt line is high, and LD7 is on whenever the bitstream is
+loaded.
+
 To check that the sensor is really measuring, put your finger on it and
 press `t` again. The temperature should rise.
 
@@ -278,12 +362,11 @@ press `t` again. The temperature should rise.
 
 ### 5.1 Build the hardware
 
-```
-cd <path>/smart_serial_controller
-vivado -mode batch -source vivado/build_ps_system.tcl
-```
+- **Windows:** double-click `windows\3_build_way2_arm_fpga.bat`.
+- **Linux, or a cmd.exe after `settings64.bat`:**
+  `vivado -mode batch -source vivado/build_ps_system.tcl`
 
-This script does five things:
+This takes 10–20 minutes. The script does five things:
 
 1. Creates a block design with the **Zynq PS**, using the ZedBoard preset.
 2. Adds the controller as a module (`ssc_axi_top`) and connects it to
@@ -296,6 +379,10 @@ This script does five things:
 If it stops with *"ZedBoard board files are not installed"*, install them
 from **Tools → Vivado Store → Boards → Avnet → ZedBoard** and run the script
 again.
+
+In Vivado 2020.x the store is not under Tools. Instead, go to **File → New
+Project → … → Boards** tab, click **Refresh**, then click the download icon
+next to ZedBoard.
 
 Open `build/ps_system/ssc_ps.xpr` and **Open Block Design** to see the
 result. It is the architecture slide drawn by Vivado.
@@ -361,28 +448,40 @@ Expected output on the ARM console:
 
 ```
 === Smart Serial Controller - Way 2 (ARM + FPGA) ===
+reading the controller ID at 0x43c00000 (a hang here = bitstream not loaded)
 controller found at 0x43c00000
-Commands: ...
+
+Commands:
+  selftest      loop-back tests inside the FPGA (no Pmods needed)
+  ...           (the full command list)
+
 ssc> selftest                         <- works with no Pmods plugged in
 ID register      : 0x53534301  PASS
 scratch register : 0xa5a55a5a  PASS
 UART loop-back   : 64 bytes, 0 errors  PASS
 SPI loop-back    : 64 words, 0 errors  PASS
+interrupts seen  : <n>
 ssc> temp
 raw 0x0c 0x58 -> (0x0c58 >> 3) x 0.0625 = +24.6875 C
 ssc> id
 JEDEC ID: 20 ba 19 (Micron - PmodSF3)
 ssc> flash
-erase 4 KB at 0xff0000   : 45000 us
-program 256 bytes       : 400 us
+erase 4 KB at 0xff0000   : <t> us
+program 256 bytes       : <t> us
 read back 256 bytes     : 0 errors  PASS
+first bytes: 5a 5b 58 59 ...
 ssc> send hello                       <- "hello" appears in the PmodUSBUART terminal
-ssc> bridge echo                      <- keys typed in the PmodUSBUART terminal come
-ssc> bridge off                          back without the CPU; then shows the byte count
+sent 5 characters
+ssc> bridge echo                      <- now type in the PmodUSBUART terminal
+UART -> UART bridge on: type in the PmodUSBUART terminal, every key
+comes straight back. 'bridge off' to stop.
+ssc> bridge off
+bridge moved <n> bytes on channel 0, 0 on channel 1 - with no CPU work
 ssc> bench
 16 bytes at 115200 baud (about 1389 us on the wire):
-  CPU time with the 16-entry FIFO : about 2000 ns  (16 register writes)
-  CPU time byte by byte (no FIFO) : about 1390 us  (the CPU waits for the wire)
+  CPU time with the 16-entry FIFO : <n> ns
+  CPU time byte by byte (no FIFO) : <n> us
+  -> the FIFO frees the CPU for about <n> x longer
 ```
 
 Your exact temperatures and timings will differ. The `bench` command gives
@@ -400,12 +499,26 @@ section 7.
 3. Double-click the Zynq:
    - *Clock Configuration*: FCLK_CLK0 = 100 MHz.
    - *Interrupts*: enable Fabric Interrupts → PL-PS IRQ_F2P.
-4. Right-click the canvas and choose **Add Module… → ssc_axi_top**. Then click
-   **Run Connection Automation**, which adds the interconnect and reset.
+4. Right-click the canvas and choose **Add Module… → ssc_axi_top**.
+   - Select the new block. In the **Block Properties** window, change its
+     **Name** to `ssc_0`, because the steps below use that name.
+   - Click **Run Connection Automation** and tick `ssc_0/S_AXI`. This adds
+     the interconnect and reset.
 5. Connect `ssc_0/irq` to `IRQ_F2P`.
-6. Select each controller pin and press **Ctrl+T** (Make External). Rename
-   the ports to the names used in `zed_top_ps.v`. Also make **FCLK_CLK0**
-   external as `fclk` and `irq` as `irq_out`.
+6. Select each `ssc_0` pin except S_AXI, the clock, the reset and irq, and
+   press **Ctrl+T** (Make External).
+   - Vivado names each new port `<pin>_0`. Click each port and, in
+     *External Port Properties*, delete the `_0`, so the port has exactly
+     the pin name.
+   - The full list is `uart_rxd`, `uart_txd`, `uart_cts_n`, `uart_rts_n`,
+     `spi_sclk`, `spi_mosi`, `spi_miso`, `spi_cs_n` (4 bits), `spis_sclk`,
+     `spis_mosi`, `spis_cs_n`, `spis_miso`, `spis_miso_oe`,
+     `spi_slave_mode`, `i2c_scl_in`, `i2c_scl_oe`, `i2c_sda_in` and
+     `i2c_sda_oe`.
+   - These names must match the `system_wrapper u_system (...)` instance in
+     `zed_top_ps.v`, not that file's own top-level ports.
+   - Also make **FCLK_CLK0** external and rename it `fclk`, and make
+     `ssc_0/irq` external and rename it `irq_out`.
 7. In the **Address Editor**, set ssc_0 to 0x43C0_0000 with a range of 4K.
 8. Validate the design (F6), then **Create HDL Wrapper** and choose "let
    Vivado manage". Set `zed_top_ps` as top.
@@ -463,12 +576,17 @@ Compare the I2C capture with the strip on slide 13.
 
 ### Optional: Integrated Logic Analyzer (ILA) inside the FPGA
 
-1. After synthesis, open **Synthesized Design → Set Up Debug**.
-2. Pick nets, for example `u_ssc/u_i2c/st`, `scl_oe`, `sda_oe` and
-   `u_ssc/u_i2c/sh`. Accept the defaults.
-3. Implement and program the board with the `.ltx` probes file.
-4. In Hardware Manager, set a trigger such as `st == 2` (START) and capture
-   the internal state machine together with the bus.
+1. Before synthesis, open **Settings → Synthesis** and set
+   **-fsm_extraction** to **none**. This keeps the I2C state numbers the same
+   as in `ssc_i2c.v`. Then run synthesis.
+2. Open **Synthesized Design → Set Up Debug**. Using **Find Nets to Add**,
+   pick `u_ssc/u_i2c/st[3:0]`, `c_scl_oe`, `c_sda_oe` and
+   `u_ssc/u_i2c/sh[7:0]`. Accept the defaults (the clock is the 100 MHz
+   clock).
+3. Implement, generate the bitstream and program the board. Vivado picks up
+   the `.ltx` probes file next to the `.bit` automatically.
+4. In Hardware Manager, set the trigger `st == 3` (S_ST2 = START), arm it,
+   and press `t` in the terminal.
 
 ### Numbers for the results chapter
 
@@ -487,14 +605,20 @@ Compare the I2C capture with the strip on slide 13.
 
 | Symptom | Fix |
 |---|---|
-| Simulation stops at 1000 ns in the GUI | Type `run all` in the Tcl console |
+| Simulation stops at 1000 ns in the GUI | Type `log_wave -r /` and then `run all` in the Tcl console |
+| A `.bat` window says "Could not find Vivado" | Open `windows\_find_vivado.bat` in Notepad and set `MY_VIVADO_SETTINGS` to your `...\Vivado\<version>\settings64.bat` |
+| Strange "file not found" errors during a Windows build | The path is too long. Copy the folder to `C:\ssc\smart_serial_controller` and build there. |
 | No banner in Way 1 | Use the **PmodUSBUART's** COM port, not the ZedBoard's. Press BTNC. Check the Pmod is in the top row of JA. If the Pmod revision has TXD/RXD swapped, swap the `uart_txd`/`uart_rxd` pins in `zed_pmods.xdc`. |
 | Garbled characters | The terminal must be set to 115200 8N1, flow control off |
-| `No ACK from PmodTMP2` | The PmodTMP2 must sit in JC pins 3–6/9–12, with both jumpers open (0x4B). With jumpers fitted the address is 0x48–0x4A: change `TMP2_ADDR` in `ssc_cmd_fsm.v` or `ssc_driver.h`. |
+| `No ACK from PmodTMP2` | The PmodTMP2 must sit in JC pins 3–6/9–12, with both jumpers open (0x4B). With jumpers fitted the address is 0x48–0x4A: change `TMP2_ADDR` in `ssc_cmd_fsm.v` or `ssc_driver.h`. Also check that the SCL/SDA pull-up resistors (JC3/JC4 to 3.3 V) are fitted. |
 | Flash ID `FF FF FF` or `00 00 00` | Check that the PmodSF3 is in JB the right way round (pin 1 to pin 1) |
-| `ERROR: ID register reads 0x…` (Way 2) | The bitstream was not programmed (in the run configuration, tick "Program FPGA"), or the base address differs. Check the Address Editor against `SSC_BASEADDR` in `sw/ssc_regs.h`. |
+| Way 2 prints `reading the controller ID …` and then nothing | The CPU is stuck on its first read of the controller because the FPGA is not programmed. Tick "Program FPGA" / "Program Device" in the run configuration, or program the bitstream from the Vivado Hardware Manager first. Then run again. |
+| `ERROR: ID register reads 0x…` (Way 2) | The FPGA answers, but it holds a different design or the address is wrong. Check the Address Editor against `SSC_BASEADDR` in `sw/ssc_regs.h`, and check that the bitstream is the one from this project. |
+| No COM port for J14 (Way 2 console) | Install the Cypress CY7C64225 USB-UART driver (section 2) and replug J14. To tell the two COM ports apart, unplug one cable and see which COMx disappears. |
+| Hardware Manager: no hardware target | Check you used J17 (PROG), not J14. Re-install the cable driver as described in section 2. |
+| Vitis: `xtime_l.h` or `xiltimer.h` not found | `sw/` picks the right header automatically: `xiltimer.h` on 2023.2+ and `xtime_l.h` on older versions. Make sure you created a *standalone* platform for `ps7_cortexa9_0`. |
 | Vitis: `XPAR_XSCUGIC_0_BASEADDR` or `XPAR_SCUGIC_SINGLE_DEVICE_ID` undeclared | `ssc_driver.c` picks whichever one your Vitis defines. Make sure the BSP includes the `scugic` driver (it does by default). |
-| Vivado: `ZedBoard board part not found` | Tools → Vivado Store → Boards → ZedBoard → Install |
+| Vivado: `ZedBoard board part not found` | Tools → Vivado Store → Boards → ZedBoard → Install. In 2020.x, use the Boards tab of the New Project wizard. |
 | Vivado: `BITSTREAM.CONFIG.UNUSEDPIN` error | Delete that last line of `zed_pmods.xdc`. It only matters for the duplicated SCL/SDA pins of the PmodTMP2. |
-| `apply_bd_automation` error in `build_ps_system.tcl` | Do steps 4–7 of section 5.4 by hand in the GUI; the rest of the script can stay as it is |
+| `apply_bd_automation` error in `build_ps_system.tcl` | Open `build/ps_system/ssc_ps.xpr` in the GUI, delete the block design `system` if it was created, and do all of section 5.4 by hand. A script that stopped with an error cannot be resumed part-way. |
 | Timing not met (negative WNS) | Should not happen at 100 MHz. Check that only the GCLK / FCLK0 clock is used, and open `timing_summary.rpt` to see the failing path. |

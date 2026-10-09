@@ -21,10 +21,11 @@ set_property -dict {PACKAGE_PIN W12 IOSTANDARD LVCMOS33} [get_ports spi_cs_n]   
 set_property -dict {PACKAGE_PIN W11 IOSTANDARD LVCMOS33} [get_ports spi_mosi]      ;# JB2  MOSI (DQ0)
 set_property -dict {PACKAGE_PIN V10 IOSTANDARD LVCMOS33} [get_ports spi_miso]      ;# JB3  MISO (DQ1)
 set_property -dict {PACKAGE_PIN W8  IOSTANDARD LVCMOS33} [get_ports spi_sclk]      ;# JB4  SCK
-set_property -dict {PACKAGE_PIN V12 IOSTANDARD LVCMOS33} [get_ports spi_wp_n]      ;# JB7  WP#   (held high)
-set_property -dict {PACKAGE_PIN W10 IOSTANDARD LVCMOS33} [get_ports spi_hold_n]    ;# JB8  HOLD# (held high)
-set_property -dict {PACKAGE_PIN V9  IOSTANDARD LVCMOS33} [get_ports spi_cs1_n]     ;# JB9  CS1# (spare)
-set_property -dict {PACKAGE_PIN V8  IOSTANDARD LVCMOS33} [get_ports spi_cs2_n]     ;# JB10 CS2# (spare)
+## PmodSF3 pins 7-10 are NC / RST# / WP# / HOLD#
+set_property -dict {PACKAGE_PIN V12 IOSTANDARD LVCMOS33} [get_ports spi_cs1_n]     ;# JB7  NC on PmodSF3 -> spare CS1#
+set_property -dict {PACKAGE_PIN W10 IOSTANDARD LVCMOS33} [get_ports spi_rst_n]     ;# JB8  PmodSF3 RST#  (held high)
+set_property -dict {PACKAGE_PIN V9  IOSTANDARD LVCMOS33} [get_ports spi_wp_n]      ;# JB9  PmodSF3 WP#   (held high)
+set_property -dict {PACKAGE_PIN V8  IOSTANDARD LVCMOS33} [get_ports spi_hold_n]    ;# JB10 PmodSF3 HOLD# (held high)
 set_property PULLUP true [get_ports spi_miso]
 
 ## ---------------- JC : PmodTMP2 (I2C temperature sensor) ----------------
@@ -32,7 +33,10 @@ set_property PULLUP true [get_ports spi_miso]
 ## (pins 3,4,5,6 / 9,10,11,12) so that SCL = JC3 and SDA = JC4.
 set_property -dict {PACKAGE_PIN Y4  IOSTANDARD LVCMOS33} [get_ports i2c_scl]       ;# JC3 (JC2_P)
 set_property -dict {PACKAGE_PIN AA4 IOSTANDARD LVCMOS33} [get_ports i2c_sda]       ;# JC4 (JC2_N)
-## weak internal pull-ups as a backup; the PmodTMP2 has its own resistors
+## The PmodTMP2 may have no SCL/SDA pull-up resistors of its own (Digilent's own
+## TMP2 guide adds external ones): fit 4.7k (2.2k-10k) from JC3 (SCL) and JC4 (SDA)
+## to 3.3 V (JC6).  The internal PULLUPs below are only a weak (~10-37k) fallback
+## that usually works at 100 kHz because the controller waits for SCL to rise.
 set_property PULLUP true [get_ports i2c_scl]
 set_property PULLUP true [get_ports i2c_sda]
 
@@ -61,7 +65,7 @@ set_property -dict {PACKAGE_PIN U14 IOSTANDARD LVCMOS33} [get_ports {led[7]}]   
 ## changes thousands of clocks apart, so the pins have no timing relationship
 ## to the 100 MHz clock that the tools need to check.
 set_false_path -from [get_ports {uart_rxd uart_cts_n spi_cs_n spi_mosi spi_miso spi_sclk i2c_scl i2c_sda}]
-set_false_path -to   [get_ports {uart_txd uart_rts_n spi_cs_n spi_mosi spi_miso spi_sclk spi_wp_n spi_hold_n spi_cs1_n spi_cs2_n i2c_scl i2c_sda la[*] led[*]}]
+set_false_path -to   [get_ports {uart_txd uart_rts_n spi_cs_n spi_mosi spi_miso spi_sclk spi_cs1_n spi_rst_n spi_wp_n spi_hold_n i2c_scl i2c_sda la[*] led[*]}]
 
 ## unused pins float (the PmodTMP2 repeats SCL/SDA on JC9/JC10)
 set_property BITSTREAM.CONFIG.UNUSEDPIN Pullnone [current_design]

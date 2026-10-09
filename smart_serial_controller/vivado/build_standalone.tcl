@@ -1,12 +1,11 @@
 # =============================================================================
 # build_standalone.tcl - "Way 1": FPGA-only bitstream (no ARM, no software)
 # -----------------------------------------------------------------------------
-# From a terminal (Linux) or the "Vivado Tcl Shell" (Windows):
-#     cd <...>/smart_serial_controller
-#     vivado -mode batch -source vivado/build_standalone.tcl
-# or from the Tcl console inside the Vivado GUI:
-#     cd <...>/smart_serial_controller
-#     source vivado/build_standalone.tcl
+# Windows : double-click windows\2_build_way1_fpga_only.bat
+# Linux   : source <Vivado>/settings64.sh ; cd <...>/smart_serial_controller
+#           vivado -mode batch -source vivado/build_standalone.tcl
+# Vivado GUI Tcl Console (forward slashes!):
+#           cd C:/ssc/smart_serial_controller ; source vivado/build_standalone.tcl
 #
 # Result:
 #     build/standalone/ssc_standalone.xpr       (open it in the GUI if you like)
@@ -17,6 +16,8 @@ set root [file normalize [file join [file dirname [info script]] ..]]
 set proj ssc_standalone
 set pdir [file join $root build standalone]
 
+# close anything left open from an earlier run in the same Vivado session
+while {[llength [get_projects -quiet]] > 0} { close_project }
 create_project $proj $pdir -part xc7z020clg484-1 -force
 
 # ---------------- design sources ----------------

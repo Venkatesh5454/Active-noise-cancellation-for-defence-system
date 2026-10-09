@@ -17,7 +17,7 @@ module tb_zed_standalone;
 
     wire uart_txd, uart_rxd, uart_rts_n;
     wire spi_cs_n, spi_mosi, spi_miso, spi_sclk;
-    wire spi_wp_n, spi_hold_n, spi_cs1_n, spi_cs2_n;
+    wire spi_cs1_n, spi_rst_n, spi_wp_n, spi_hold_n;
     wire i2c_scl, i2c_sda;
     wire [7:0] la, led;
 
@@ -29,7 +29,7 @@ module tb_zed_standalone;
         .clk_100m(clk), .btn_reset(btn),
         .uart_cts_n(1'b0), .uart_txd(uart_txd), .uart_rxd(uart_rxd), .uart_rts_n(uart_rts_n),
         .spi_cs_n(spi_cs_n), .spi_mosi(spi_mosi), .spi_miso(spi_miso), .spi_sclk(spi_sclk),
-        .spi_wp_n(spi_wp_n), .spi_hold_n(spi_hold_n), .spi_cs1_n(spi_cs1_n), .spi_cs2_n(spi_cs2_n),
+        .spi_cs1_n(spi_cs1_n), .spi_rst_n(spi_rst_n), .spi_wp_n(spi_wp_n), .spi_hold_n(spi_hold_n),
         .i2c_scl(i2c_scl), .i2c_sda(i2c_sda),
         .la(la), .led(led)
     );
@@ -143,7 +143,8 @@ module tb_zed_standalone;
 
     initial begin
         #(300_000_000);
-        $display("GLOBAL TIME-OUT");
+        errors = errors + 1;                     // a time-out is a failure
+        $display("GLOBAL TIME-OUT - %0d OF %0d CHECKS FAILED (counting the time-out)", errors, checks + 1);
         show_session;
         $finish;
     end

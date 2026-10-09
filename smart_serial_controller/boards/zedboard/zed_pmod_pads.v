@@ -4,7 +4,9 @@
 //   JB  SPI:  master mode -> we drive CS#, MOSI, SCLK and read MISO
 //             slave mode  -> an outside master drives CS#, MOSI, SCLK and we
 //                            drive MISO (only while our CS# is low)
-//             JB7/JB8 = WP#/HOLD# of the PmodSF3 flash, tied high (inactive)
+//             PmodSF3 pins 7-10 are NC / RST# / WP# / HOLD#: JB8-JB10 are tied
+//             high (inactive); JB7 (not connected on the PmodSF3) carries a
+//             spare chip select CS1#
 //   JC  I2C:  open drain: drive 0 or let go (high-Z); the pull-ups make the 1.
 //             "assign pad = oe ? 1'b0 : 1'bz" makes Vivado use an IOBUF.
 //   JD  copy of all bus lines for a logic analyser
@@ -36,10 +38,10 @@ module zed_pmod_pads (
     inout  wire       pad_spi_mosi,   // JB2
     inout  wire       pad_spi_miso,   // JB3
     inout  wire       pad_spi_sclk,   // JB4
-    output wire       pad_spi_wp_n,   // JB7
-    output wire       pad_spi_hold_n, // JB8
-    output wire       pad_spi_cs1_n,  // JB9
-    output wire       pad_spi_cs2_n,  // JB10
+    output wire       pad_spi_cs1_n,  // JB7  (NC on the PmodSF3: spare CS1#)
+    output wire       pad_spi_rst_n,  // JB8  PmodSF3 RST#  (held high)
+    output wire       pad_spi_wp_n,   // JB9  PmodSF3 WP#   (held high)
+    output wire       pad_spi_hold_n, // JB10 PmodSF3 HOLD# (held high)
     inout  wire       pad_i2c_scl,    // JC3
     inout  wire       pad_i2c_sda,    // JC4
     output wire [7:0] la,             // JD1-4, JD7-10
@@ -56,10 +58,10 @@ module zed_pmod_pads (
     assign c_spis_mosi  = pad_spi_mosi;
     assign c_spis_sclk  = pad_spi_sclk;
 
+    assign pad_spi_cs1_n  = c_spi_cs_n[1];
+    assign pad_spi_rst_n  = 1'b1;
     assign pad_spi_wp_n   = 1'b1;
     assign pad_spi_hold_n = 1'b1;
-    assign pad_spi_cs1_n  = c_spi_cs_n[1];
-    assign pad_spi_cs2_n  = c_spi_cs_n[2];
 
     // ---------------- I2C (open drain) ----------------
     assign pad_i2c_scl = c_scl_oe ? 1'b0 : 1'bz;

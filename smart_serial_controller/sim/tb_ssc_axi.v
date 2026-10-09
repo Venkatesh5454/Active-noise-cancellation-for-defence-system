@@ -31,12 +31,12 @@ module tb_ssc_axi;
     assign sda = sda_oe ? 1'b0 : 1'bz;
 
     ssc_axi_top dut (
-        .s_axi_aclk(clk), .s_axi_aresetn(aresetn),
-        .s_axi_awaddr(awaddr), .s_axi_awprot(3'd0), .s_axi_awvalid(awvalid), .s_axi_awready(awready),
-        .s_axi_wdata(wdata), .s_axi_wstrb(4'hF), .s_axi_wvalid(wvalid), .s_axi_wready(wready),
-        .s_axi_bresp(bresp), .s_axi_bvalid(bvalid), .s_axi_bready(bready),
-        .s_axi_araddr(araddr), .s_axi_arprot(3'd0), .s_axi_arvalid(arvalid), .s_axi_arready(arready),
-        .s_axi_rdata(rdata), .s_axi_rresp(rresp), .s_axi_rvalid(rvalid), .s_axi_rready(rready),
+        .S_AXI_ACLK(clk), .S_AXI_ARESETN(aresetn),
+        .S_AXI_AWADDR(awaddr), .S_AXI_AWPROT(3'd0), .S_AXI_AWVALID(awvalid), .S_AXI_AWREADY(awready),
+        .S_AXI_WDATA(wdata), .S_AXI_WSTRB(4'hF), .S_AXI_WVALID(wvalid), .S_AXI_WREADY(wready),
+        .S_AXI_BRESP(bresp), .S_AXI_BVALID(bvalid), .S_AXI_BREADY(bready),
+        .S_AXI_ARADDR(araddr), .S_AXI_ARPROT(3'd0), .S_AXI_ARVALID(arvalid), .S_AXI_ARREADY(arready),
+        .S_AXI_RDATA(rdata), .S_AXI_RRESP(rresp), .S_AXI_RVALID(rvalid), .S_AXI_RREADY(rready),
         .irq(irq),
         .uart_rxd(1'b1), .uart_txd(uart_txd), .uart_cts_n(1'b0), .uart_rts_n(uart_rts_n),
         .spi_sclk(spi_sclk), .spi_mosi(spi_mosi), .spi_miso(spi_miso), .spi_cs_n(spi_cs_n),
@@ -185,7 +185,8 @@ module tb_ssc_axi;
 
     initial begin
         #(50_000_000);
-        $display("GLOBAL TIME-OUT");
+        errors = errors + 1;                     // a time-out is a failure
+        $display("GLOBAL TIME-OUT - %0d OF %0d CHECKS FAILED (counting the time-out)", errors, checks + 1);
         $finish;
     end
 endmodule

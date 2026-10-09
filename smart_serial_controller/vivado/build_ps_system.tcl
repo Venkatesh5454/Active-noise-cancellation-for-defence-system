@@ -1,9 +1,11 @@
 # =============================================================================
 # build_ps_system.tcl - "Way 2": Zynq ARM + controller, bitstream + XSA for Vitis
 # -----------------------------------------------------------------------------
-#     cd <...>/smart_serial_controller
-#     vivado -mode batch -source vivado/build_ps_system.tcl
-# (or "source vivado/build_ps_system.tcl" from the Vivado GUI Tcl console)
+# Windows : double-click windows\3_build_way2_arm_fpga.bat
+# Linux   : source <Vivado>/settings64.sh ; cd <...>/smart_serial_controller
+#           vivado -mode batch -source vivado/build_ps_system.tcl
+# Vivado GUI Tcl Console (forward slashes!):
+#           cd C:/ssc/smart_serial_controller ; source vivado/build_ps_system.tcl
 #
 # Block design "system":
 #
@@ -23,6 +25,8 @@ set root [file normalize [file join [file dirname [info script]] ..]]
 set proj ssc_ps
 set pdir [file join $root build ps_system]
 
+# close anything left open from an earlier run in the same Vivado session
+while {[llength [get_projects -quiet]] > 0} { close_project }
 create_project $proj $pdir -part xc7z020clg484-1 -force
 
 # ---------------- ZedBoard board files (needed for the DDR3 settings) ----------------
@@ -31,6 +35,8 @@ if {$bp eq ""} { set bp [get_board_parts -quiet -latest_file_version {*:zed:*}] 
 if {$bp eq ""} {
     puts "ERROR: the ZedBoard board files are not installed."
     puts "       In Vivado: Tools > Vivado Store... > Boards > Avnet > ZedBoard > Install"
+    puts "       (Vivado 2020.x: File > New Project > Default Part > Boards tab > Refresh,"
+    puts "        then the download icon next to ZedBoard)"
     puts "       (or copy Digilent's vivado-boards 'zedboard' folder into"
     puts "       <Vivado install>/data/boards/board_files) and run this script again."
     error "ZedBoard board part not found"
@@ -63,18 +69,24 @@ set_property -dict [list \
 # the controller (module reference: no IP packaging needed)
 create_bd_cell -type module -reference ssc_axi_top ssc_0
 
-# AXI connection: interconnect + processor reset block are added automatically
+# AXI connection: interconnect + processor reset block are added automatically.
+# The slave interface is found by its role, so its exact name does not matter.
+set ssc_axi [get_bd_intf_pins -quiet -of_objects [get_bd_cells ssc_0] -filter {MODE == "Slave"}]
+if {[llength $ssc_axi] != 1} {
+    error "ssc_0: expected one AXI slave interface, found: [get_bd_intf_pins -quiet -of_objects [get_bd_cells ssc_0]]"
+}
+set ssc_axi_path [get_property PATH $ssc_axi]
+puts "ssc_0 AXI slave interface: $ssc_axi_path"
 if {[catch {
     apply_bd_automation -rule xilinx.com:bd_rule:axi4 \
-        -config { Clk_master {Auto} Clk_slave {Auto} Clk_xbar {Auto} \
-                  Master {/processing_system7_0/M_AXI_GP0} Slave {/ssc_0/S_AXI} \
-                  intc_ip {New AXI Interconnect} master_apm {0} } \
-        [get_bd_intf_pins ssc_0/S_AXI]
+        -config [list Clk_master {Auto} Clk_slave {Auto} Clk_xbar {Auto} \
+                      Master {/processing_system7_0/M_AXI_GP0} Slave $ssc_axi_path \
+                      intc_ip {New AXI Interconnect} master_apm {0}] \
+        $ssc_axi
 } msg]} {
     puts "Newer AXI automation syntax failed ($msg) - trying the older one"
     apply_bd_automation -rule xilinx.com:bd_rule:axi4 \
-        -config {Master "/processing_system7_0/M_AXI_GP0" Clk "Auto"} \
-        [get_bd_intf_pins ssc_0/S_AXI]
+        -config {Master "/processing_system7_0/M_AXI_GP0" Clk "Auto"} $ssc_axi
 }
 
 # interrupt to the ARM, and a copy for an LED
