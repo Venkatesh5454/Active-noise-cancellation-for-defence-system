@@ -81,7 +81,7 @@ smart_serial_controller/
 ├── sim/                    testbenches + fake devices (sim/models)
 ├── vivado/                 build_standalone.tcl, build_ps_system.tcl, run_sim.tcl
 ├── sw/                     Vitis C program: ssc_regs.h, ssc_driver.c/.h, main.c
-└── docs/                   CODE_WALKTHROUGH.md, REGISTER_MAP.md, sim_results/
+└── docs/                   CODE_WALKTHROUGH.md, REGISTER_MAP.md, sim_results/, pdf/ (all guides as PDF)
 ```
 
 To understand the code, read [docs/CODE_WALKTHROUGH.md](docs/CODE_WALKTHROUGH.md).
@@ -98,8 +98,8 @@ To program the controller, use [docs/REGISTER_MAP.md](docs/REGISTER_MAP.md).
 | **AMD Vivado ML Standard** (free) | 2020.2 or newer | Simulation (XSim), synthesis, implementation, bitstream, programming the board (Hardware Manager). The XC7Z020 on the ZedBoard is covered by the free licence. |
 | **AMD Vitis** (install it together with Vivado) | same version as Vivado | Way 2 only: the C program for the ARM. 2023.2 and newer have the "Vitis Unified IDE"; older versions have "Vitis Classic". Both are described below. |
 | ZedBoard board files | from the Vivado Store | Way 2 only: the DDR3 and MIO settings of the Zynq |
-| Cable drivers | come with Vivado | JTAG programming. On Linux run `<Vivado>/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers` once as root. |
-| Windows: JTAG cable driver | comes with Vivado | If Hardware Manager → Auto Connect finds no target: open **cmd as Administrator**, run `cd /d C:\Xilinx\Vivado\<ver>\data\xicom\cable_drivers\nt64` (or the same folder under `C:\AMDDesignTools\<ver>\Vivado`), then run `install_drivers_wrapper.bat`. Unplug and replug J17. |
+| Cable drivers | come with Vivado | JTAG programming. On Linux run `install_drivers` once as root. It is at `<install>/<ver>/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers` for 2025.1 and newer, and at `<install>/Vivado/<ver>/data/...` for older versions. |
+| Windows: JTAG cable driver | comes with Vivado | If Hardware Manager → Auto Connect finds no target: open **cmd as Administrator**, run `cd /d C:\Xilinx\Vivado\<ver>\data\xicom\cable_drivers\nt64` (2024.2 and older) or `cd /d <install root>\<ver>\data\xicom\cable_drivers\nt64` (2025.1 and newer, where `data` sits beside `Vivado`), then run `install_drivers_wrapper.bat`. If the folder is not there, search the install folder for `install_drivers_wrapper.bat`. Unplug and replug J17. |
 | Windows: ZedBoard USB-UART (J14) driver | Cypress CY7C64225 USB-UART driver (Avnet ZedBoard support page / Infineon) | Only needed if no new COM port appears in Device Manager → Ports when you plug in J14. The PmodUSBUART's FTDI driver installs itself. |
 | Serial terminal | any | PuTTY or Tera Term (Windows), `screen` or `minicom` (Linux), or the serial monitor built into Vitis |
 | *Optional:* logic-analyser software | | Digilent WaveForms (Analog Discovery), Saleae Logic 2 or PulseView. All three have UART, SPI and I2C decoders. |
@@ -114,13 +114,22 @@ To program the controller, use [docs/REGISTER_MAP.md](docs/REGISTER_MAP.md).
 - **PmodSF3** (32 MB SPI flash), on **JB**
 - **PmodTMP2** (ADT7420 temperature sensor), on **JC**, with both address
   jumpers **open** (address 0x4B)
-- **Recommended:** 2 × 4.7 kΩ resistors (anything from 2.2k to 10k works) as
-  I2C pull-ups:
-  - JC3 (SCL) to JC6 (3.3 V)
-  - JC4 (SDA) to JC6 (3.3 V)
+- *If needed:* 2 × 4.7 kΩ resistors (2.2k to 10k all work) as I2C pull-ups,
+  one from SCL to 3.3 V and one from SDA to 3.3 V.
+  - The PmodTMP2 may not have its own pull-ups.
+  - The FPGA's internal pull-ups usually work at 100 kHz, so try without them
+    first, and add them if `t` / `temp` reports *No ACK*.
 
-  The PmodTMP2 may not have its own pull-ups. The FPGA's internal pull-ups
-  usually work at 100 kHz, but they are weak.
+  With the Pmod plugged into JC, JC3–JC6 and JC9–JC12 are all filled, so
+  fit the resistors on a breadboard:
+  
+  1. Run four female-to-male jumper wires from the PmodTMP2's SCL, SDA, GND
+     and VCC pins to four breadboard rows.
+  2. Run four male-to-male wires from those rows to JC3 (SCL), JC4 (SDA),
+     JC5 (GND) and JC6 (3.3 V).
+  3. Fit one resistor from SCL to VCC and one from SDA to VCC.
+  
+  A Digilent Pmod extension cable into a breadboard also works.
 - *Optional:* a logic analyser on **JD**. A Digilent PmodTPH2 test-point
   header makes clipping on easy.
 
@@ -148,7 +157,7 @@ in `boards/zedboard/zed_pmods.xdc`. The Verilog does not need to change.
 
 ---
 
-## 3. Step 1: simulate first (no board needed)
+## 3. Simulate first (no board needed)
 
 There are three self-checking testbenches. "Self-checking" means each one
 compares every result with the expected value and prints PASS or FAIL. You
@@ -180,8 +189,10 @@ vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_ssc_axi
 vivado -mode batch -source vivado/run_sim.tcl -tclargs tb_zed_standalone
 ```
 
-Change the first line to your own version and install folder, for example
-`C:\AMDDesignTools\2025.1\Vivado\settings64.bat`.
+Change the first line to your own version and install folder. From 2025.1
+the version folder comes before `Vivado`, for example
+`C:\Xilinx\2025.1\Vivado\settings64.bat` or
+`C:\AMDDesignTools\2025.2\Vivado\settings64.bat`.
 
 **Inside the Vivado GUI Tcl Console or the Vivado Tcl Shell:** that prompt
 already is Vivado, so do not type `vivado` there. Use forward slashes:
@@ -202,7 +213,8 @@ fails.
 
 ### Option B: Vivado GUI, with waveforms
 
-1. Run `vivado/build_standalone.tcl` once (see step 2). It creates
+1. Run the Way 1 build once: double-click `windows\2_build_way1_fpga_only.bat`
+   (see section 4.1). It creates
    `build/standalone/ssc_standalone.xpr` with all simulation files already
    added. You can also create a project by hand: add `rtl/*.v`, the two
    `boards/zedboard/*.v` files as design sources, and `sim/*.v` plus
@@ -279,7 +291,7 @@ testbench output. A shortened example:
 
 ---
 
-## 4. Step 2: Way 1, FPGA only (quick bring-up)
+## 4. Way 1: FPGA only (quick bring-up)
 
 No ARM and no software are involved. `ssc_cmd_fsm` drives the registers
 itself, so this is the fastest way to see the hardware work on the board.
@@ -358,7 +370,7 @@ press `t` again. The temperature should rise.
 
 ---
 
-## 5. Step 3: Way 2, ARM + FPGA (the final system)
+## 5. Way 2: ARM + FPGA (the final system)
 
 ### 5.1 Build the hardware
 
@@ -583,8 +595,14 @@ Compare the I2C capture with the strip on slide 13.
    pick `u_ssc/u_i2c/st[3:0]`, `c_scl_oe`, `c_sda_oe` and
    `u_ssc/u_i2c/sh[7:0]`. Accept the defaults (the clock is the 100 MHz
    clock).
-3. Implement, generate the bitstream and program the board. Vivado picks up
-   the `.ltx` probes file next to the `.bit` automatically.
+3. Implement and generate the bitstream. Then click **Program Device** and
+   keep the paths Vivado fills in:
+   `build\standalone\ssc_standalone.runs\impl_1\zed_top_standalone.bit`,
+   and the `.ltx` probes file beside it.
+
+   Do not browse to `build\standalone\zed_top_standalone.bit`. That file is
+   a copy made only by `2_build_way1_fpga_only.bat`, and it has no ILA. The
+   same applies whenever you rebuild in the GUI after changing the Verilog.
 4. In Hardware Manager, set the trigger `st == 3` (S_ST2 = START), arm it,
    and press `t` in the terminal.
 
@@ -606,11 +624,11 @@ Compare the I2C capture with the strip on slide 13.
 | Symptom | Fix |
 |---|---|
 | Simulation stops at 1000 ns in the GUI | Type `log_wave -r /` and then `run all` in the Tcl console |
-| A `.bat` window says "Could not find Vivado" | Open `windows\_find_vivado.bat` in Notepad and set `MY_VIVADO_SETTINGS` to your `...\Vivado\<version>\settings64.bat` |
+| A `.bat` window says "Could not find Vivado" | Find `settings64.bat` in your install folder. It is at `<root>\<version>\Vivado\settings64.bat` for 2025.1 and newer, and `C:\Xilinx\Vivado\<version>\settings64.bat` for older versions. Then edit line 6 of `windows\_find_vivado.bat` to read, for example, `set "MY_VIVADO_SETTINGS=C:\Xilinx\2025.1\Vivado\settings64.bat"`, with one pair of quotes around the whole line. |
 | Strange "file not found" errors during a Windows build | The path is too long. Copy the folder to `C:\ssc\smart_serial_controller` and build there. |
 | No banner in Way 1 | Use the **PmodUSBUART's** COM port, not the ZedBoard's. Press BTNC. Check the Pmod is in the top row of JA. If the Pmod revision has TXD/RXD swapped, swap the `uart_txd`/`uart_rxd` pins in `zed_pmods.xdc`. |
 | Garbled characters | The terminal must be set to 115200 8N1, flow control off |
-| `No ACK from PmodTMP2` | The PmodTMP2 must sit in JC pins 3–6/9–12, with both jumpers open (0x4B). With jumpers fitted the address is 0x48–0x4A: change `TMP2_ADDR` in `ssc_cmd_fsm.v` or `ssc_driver.h`. Also check that the SCL/SDA pull-up resistors (JC3/JC4 to 3.3 V) are fitted. |
+| `No ACK from PmodTMP2` | The PmodTMP2 must sit in JC pins 3–6/9–12, with both jumpers open (0x4B). With jumpers fitted the address is 0x48–0x4A: change `TMP2_ADDR` in `ssc_cmd_fsm.v` or `ssc_driver.h`. If it still fails, add the SCL/SDA pull-up resistors on a breadboard (section 2, Hardware). |
 | Flash ID `FF FF FF` or `00 00 00` | Check that the PmodSF3 is in JB the right way round (pin 1 to pin 1) |
 | Way 2 prints `reading the controller ID …` and then nothing | The CPU is stuck on its first read of the controller because the FPGA is not programmed. Tick "Program FPGA" / "Program Device" in the run configuration, or program the bitstream from the Vivado Hardware Manager first. Then run again. |
 | `ERROR: ID register reads 0x…` (Way 2) | The FPGA answers, but it holds a different design or the address is wrong. Check the Address Editor against `SSC_BASEADDR` in `sw/ssc_regs.h`, and check that the bitstream is the one from this project. |

@@ -8,4 +8,4 @@ if not exist build\standalone\ssc_standalone.xpr (
     echo Run 2_build_way1_fpga_only.bat first.
     pause & exit /b 1
 )
-start "" vivado -nojournal -nolog build\standalone\ssc_standalone.xpr
+start "Vivado - do not close this window" /min cmd /c vivado -nojournal -nolog build\standalone\ssc_standalone.xpr

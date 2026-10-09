@@ -190,9 +190,23 @@ static void bridge_counts(void)
                (int)(cnt & 0xFFFFu), (int)(cnt >> 16));
 }
 
+/* wait for an I2C command started by 'bridge temp'; on failure stop the bridge */
+static int bridge_i2c_check(void)
+{
+    uint32_t ev = ssc_wait_events(SSC_INT_I2C_DONE, 100000u);
+    uint32_t st = ssc_rd(SSC_I2C_STATUS);
+    if (ev && !(st & (I2C_ST_NACK | I2C_ST_ARB_LOST))) return SSC_OK;
+    ssc_wr(SSC_I2C_CTRL, I2C_CTRL_EN | I2C_CTRL_ABORT);
+    ssc_wr(SSC_BRIDGE_CTRL, 0u);
+    if (!ev)                   return SSC_ETIMEOUT;
+    if (st & I2C_ST_ARB_LOST)  return SSC_EARB;
+    return SSC_ENACK;
+}
+
 static void cmd_bridge(const char *arg)
 {
     uint32_t en = ssc_rd(SSC_INT_ENABLE);
+    int r;
     if (strcmp(arg, "echo") == 0) {
         ssc_wr(SSC_INT_ENABLE, en & ~SSC_INT_UART_RX);    /* the bridge owns UART RX now */
         ssc_wr(SSC_BRIDGE_CNT, 0u);
@@ -208,19 +222,13 @@ static void cmd_bridge(const char *arg)
         (void)ssc_take_events(SSC_INT_I2C_DONE);
         ssc_wr(SSC_I2C_TXDATA, 0x00u);
         ssc_wr(SSC_I2C_CMD, I2C_CMD_LEN(1));                     /* pointer, keep bus */
-        if (!ssc_wait_events(SSC_INT_I2C_DONE, 100000u) ||
-            (ssc_rd(SSC_I2C_STATUS) & (I2C_ST_NACK | I2C_ST_ARB_LOST))) {
-            ssc_wr(SSC_I2C_CTRL, I2C_CTRL_EN | I2C_CTRL_ABORT);
-            ssc_wr(SSC_BRIDGE_CTRL, 0u);
-            xil_printf("I2C error: %s\r\n", err_text(SSC_ENACK));
+        if ((r = bridge_i2c_check()) != SSC_OK) {
+            xil_printf("I2C error: %s\r\n", err_text(r));
             return;
         }
         ssc_wr(SSC_I2C_CMD, I2C_CMD_LEN(2) | I2C_CMD_READ | I2C_CMD_STOP);
-        if (!ssc_wait_events(SSC_INT_I2C_DONE, 100000u) ||
-            (ssc_rd(SSC_I2C_STATUS) & (I2C_ST_NACK | I2C_ST_ARB_LOST))) {
-            ssc_wr(SSC_I2C_CTRL, I2C_CTRL_EN | I2C_CTRL_ABORT);
-            ssc_wr(SSC_BRIDGE_CTRL, 0u);
-            xil_printf("I2C error: %s\r\n", err_text(SSC_ENACK));
+        if ((r = bridge_i2c_check()) != SSC_OK) {
+            xil_printf("I2C error: %s\r\n", err_text(r));
             return;
         }
         xil_printf("2 temperature bytes went I2C -> UART by hardware (view the\r\n"

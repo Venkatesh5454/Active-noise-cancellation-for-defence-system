@@ -25,11 +25,15 @@ before you move on. The full reference, with troubleshooting, is
      drop-down from **main** to **claude/wizardly-cori-h3t0hy**, and click
      **Code → Download ZIP**. The `main` branch does **not** contain this
      project.
-2. On Windows, right-click the ZIP and choose **Properties**. Tick
-   **Unblock**, click **OK**, then choose **Extract All…**.
-3. Copy the **`smart_serial_controller`** folder to a **short path with no
-   spaces**, for example `C:\ssc\`. Check that
-   `C:\ssc\smart_serial_controller\README.md` exists.
+2. On Windows, right-click the ZIP and choose **Properties**. If there is
+   an **Unblock** box, tick it and click **OK**.
+3. Right-click the ZIP and choose **Extract All…**. Set the destination to
+   **`C:\ssc`**, a short path with no spaces, and click **Extract**.
+4. Check that **`C:\ssc\smart_serial_controller\README.md`** exists.
+   - If you have `C:\ssc\smart_serial_controller\smart_serial_controller\README.md`
+     instead, move the inner `smart_serial_controller` folder up one level.
+   - For the GitHub ZIP, copy the `smart_serial_controller` folder from
+     inside the extracted `Active-noise-…` folder to `C:\ssc\`.
 
    > Do not work inside Downloads, Desktop or OneDrive. Vivado has problems
    > with spaces in folder names and with paths longer than 260 characters.
@@ -47,6 +51,7 @@ smart_serial_controller\
   vivado\              <- Tcl build scripts (the .bat files run these)
   sw\                  <- C program for the ARM (Vitis)
   docs\                <- code explanation, register map, expected simulation output
+  docs\pdf\            <- the same guides as PDF files, easy to read or print
 ```
 
 ---
@@ -57,9 +62,12 @@ smart_serial_controller\
    website, which needs a free AMD account. Choose the product **Vitis**,
    which installs both Vivado and Vitis.
    - Any version from 2020.2 onwards works; the current release is fine.
-   - Install to the default folder, and write down the folder the installer
-     shows (`C:\Xilinx\...` or `C:\AMDDesignTools\...`). You need it if a
-     `.bat` file says "Could not find Vivado".
+   - Install to the default folder, and write down the folder the
+     installer shows. You need it if a `.bat` file says "Could not find
+     Vivado". It looks like:
+     - `C:\AMDDesignTools\<version>\Vivado` or
+       `C:\Xilinx\<version>\Vivado` for 2025.1 and newer
+     - `C:\Xilinx\Vivado\<version>` for older versions
    - Under devices you only need **SoCs → Zynq-7000**. Untick the others to
      save disk space.
    - Make sure **Install Cable Drivers** is ticked.
@@ -78,7 +86,8 @@ smart_serial_controller\
    - If Hardware Manager → Auto Connect finds no board, re-install the cable
      driver as described in README section 2.
 5. **Linux only:** run the cable-driver installer once as root:
-   `<Vivado>/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers`
+   `<install>/<version>/data/xicom/cable_drivers/lin64/install_script/install_drivers/install_drivers`
+   (for versions before 2025.1, use `<install>/Vivado/<version>/data/...`)
 
 ---
 
@@ -91,7 +100,12 @@ This proves the Verilog works before you touch any hardware.
 > If Windows shows "Windows protected your PC", click *More info → Run
 > anyway*. If the script says "Could not find Vivado", open
 > `windows\_find_vivado.bat` in Notepad and set `MY_VIVADO_SETTINGS` to your
-> `...\Vivado\<version>\settings64.bat`.
+> `settings64.bat`. Write it with one pair of quotes around the whole line,
+> for example
+> `set "MY_VIVADO_SETTINGS=C:\Xilinx\2025.1\Vivado\settings64.bat"`.
+> The path is `<root>\<version>\Vivado\settings64.bat` for 2025.1 and
+> newer, and `C:\Xilinx\Vivado\<version>\settings64.bat` for older
+> versions.
 
 **Linux:**
 
@@ -169,8 +183,10 @@ If it says `*** BUILD FAILED ***`, open `build\build_way1.log` and search for
      bottom row. This puts SCL on JC3 and SDA on JC4. JC1, JC2, JC7 and JC8
      stay empty. Leave both address jumpers on the PmodTMP2 **open**, which
      gives address 0x4B.
-   - **Recommended:** fit two 4.7 kΩ pull-up resistors, from JC3 to JC6
-     (3.3 V) and from JC4 to JC6. The FPGA's own pull-ups are weak.
+   - **I2C pull-ups:** try without them first, because the FPGA's internal
+     pull-ups usually work. If `t` later says *No ACK*, add two 4.7 kΩ
+     resistors, SCL to 3.3 V and SDA to 3.3 V, on a breadboard. README
+     section 2 (Hardware) explains how to wire them.
 3. Connect the cables:
    - **J17 (PROG)** micro-USB to the PC.
    - The **PmodUSBUART** micro-USB to the PC.
