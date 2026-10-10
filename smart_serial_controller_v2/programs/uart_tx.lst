@@ -1,0 +1,32 @@
+; se_asm.py listing of programs/uart_tx.se
+; program uart_tx, origin 0, 7 words, side_set 0
+;
+; addr = word index in the program memory (decimal), code = hex
+;
+; addr code  line  source
+               1  // =============================================================================
+               2  // uart_tx.se  -  UART transmitter for the serial engine (slide 13)
+               3  // -----------------------------------------------------------------------------
+               4  // 8 data bits, no parity, 1 stop bit, LSB first.  Each TX FIFO word gives
+               5  // one byte in bits [7:0].  The SM ticks at 8 x the baud rate, so every bit
+               6  // lasts 8 ticks:  SET/OUT (1 tick) + delay (6 or 7) + JMP (1 tick).
+               7  //
+               8  //   clock: 100 MHz / (108 + 128/256) = 921.6 kHz = 8 x 115200 baud
+               9  //   pins : pin 1 = TXD (Pmod UART role table), idle high
+              10  //          OUT_BASE = 1, SET_BASE = 1, SET_COUNT = 1,
+              11  //          INIT_OUT pin 1 = 1, INIT_OE pin 1 = 1        -> PINCTRL 0x02200015
+              12  //   shift: OUT shifts right (LSB first), START_PC = 0  -> SHIFTCTRL 0x0
+              13  // =============================================================================
+              14  .program   uart_tx
+              15  .origin    0
+              16  .clkdiv    108 128
+              17  .pinctrl   0x02200015
+              18  .shiftctrl 0x00000000
+              19  
+  00   80c0   20  loop: PULL block
+  01   a027   21        SET  x, 7
+  02   a700   22        SET  pins, 0  [7]
+  03   6601   23  bit:  OUT  pins, 1  [6]
+  04   0043   24        JMP  x--, bit
+  05   a701   25        SET  pins, 1  [7]
+  06   0000   26        JMP  loop
