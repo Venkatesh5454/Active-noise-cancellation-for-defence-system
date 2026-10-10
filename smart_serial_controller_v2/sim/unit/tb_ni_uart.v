@@ -55,6 +55,13 @@ module tb_ni_uart;
         end
     endtask
 
+    // print a heading so the log shows which test is running
+    task section(input [8*64-1:0] name);
+        begin
+            $display("--- %0s  (t = %0d us, %0d checks so far)", name, $time / 1000, checks);
+        end
+    endtask
+
     integer seed_s = 7;     // stall generator
     integer seed_c = 11;    // capture consumer
     integer seed_d = 5;     // test data
@@ -403,17 +410,24 @@ module tb_ni_uart;
         stall_on = 1'b1;
 
         // ---- 1: slide 17 flow A, PC -> network ----
+        section("1: slide 17 flow A, PC -> network");
         frame_9f;
         wait_cap(1, 100);
         check(cp_cnt == 1, "1: frame 01 9F 03 gives one packet");
         check_pkt(0, T_XREQ, 3'd4, 1'b0, 3, 8'h01, "1: XFER_REQ to node 4, arg 01, payload 01 03 9F");
         check(cp_htime[0] - last_pop_t < 1000, "1: request sent at once after rlen");
+        $display("    PC 01 9F 03 -> type %0d dest %0d src %0d tag %0d arg %h len %0d payload %h %h %h",
+                 cp_type[0], cp_dest[0], cp_src[0], cp_tag[0], cp_arg[0], cp_len[0],
+                 cp_pay[0], cp_pay[1], cp_pay[2]);
 
         // ---- 2: reply 20 BA 19 back to the PC ----
+        section("2: reply 20 BA 19 back to the PC");
         jpay[0] = 8'h00; jpay[1] = 8'h20; jpay[2] = 8'hBA; jpay[3] = 8'h19;
         inject(T_XRESP, 4, cp_tag[0]);
         expect_jpay(1, 4);
         check_pc("2: PC receives exactly 20 BA 19");
+        $display("    XFER_RESP 00 20 BA 19 -> PC received %0d bytes: %h %h %h",
+                 term.rx_cnt, term.rx_mem[0], term.rx_mem[1], term.rx_mem[2]);
         resp_status = 1'b1;
         inject(T_XRESP, 4, 8'h00);
         expect_jpay(0, 4);
@@ -426,6 +440,7 @@ module tb_ni_uart;
         check(n_push == push0, "2: status-only XFER_RESP: no TX push");
 
         // ---- 3: FRAME corner cases ----
+        section("3: FRAME corner cases");
         pc_send(8'h00); pc_send(8'h02);         // wlen 0, rlen 2
         wait_cap(2, 100);
         ep[0] = 8'h00; ep[1] = 8'h02;
@@ -450,6 +465,7 @@ module tb_ni_uart;
         check_pkt(3, T_XREQ, 3'd4, 1'b0, 4, 8'h01, "3: pauses < timeout keep the frame");
 
         // ---- 4: incomplete frame is dropped after the time-out ----
+        section("4: incomplete frame is dropped after the time-out");
         n0 = cp_cnt;
         pc_send(8'h02); pc_send(8'hAA);         // 2 of 4 bytes
         wait_us(2 * TMO);
@@ -473,6 +489,7 @@ module tb_ni_uart;
         check_pkt(n0 + 1, T_XREQ, 3'd4, 1'b0, 4, 8'h01, "4: frame kept across a 40 us stall");
 
         // ---- 5: bad lengths ----
+        section("5: bad lengths");
         n0 = cp_cnt;
         pc_send(8'h3D); pc_send(8'h11); pc_send(8'h22);              // wlen 61
         wait_us(2 * TMO);
@@ -490,6 +507,7 @@ module tb_ni_uart;
         check_pkt(n0, T_XREQ, 3'd4, 1'b0, 3, 8'h01, "5: good frame after the silence");
 
         // ---- 6: ADDRESSED FRAME ----
+        section("6: ADDRESSED FRAME");
         mode = 2'd2; cfg_prio = 1'b1;           // cfg dest/arg must be ignored
         n0 = cp_cnt;
         pc_send(8'h05); pc_send(8'h50); pc_send(8'h02);
@@ -512,6 +530,7 @@ module tb_ni_uart;
         check_pkt(n0 + 2, T_XREQ, 3'd4, 1'b1, 3, 8'h02, "6: [04][02] 01 9F 03 after resync");
 
         // ---- 7: RAW ----
+        section("7: RAW");
         mode = 2'd0; cfg_dest = 3'd1; cfg_arg = 8'h5A; cfg_prio = 1'b1;
         n0 = cp_cnt;
         for (i = 0; i < 16; i = i + 1) begin
@@ -575,6 +594,7 @@ module tb_ni_uart;
         check_pkt(n0 + 6, T_DATA, 3'd1, 1'b1, 3, 8'h5A, "7: mode change drops a half frame");
 
         // ---- 8: network -> PC, every forwarded type ----
+        section("8: network -> PC, every forwarded type");
         for (i = 0; i < 16; i = i + 1) jpay[i] = $random(seed_d);
         inject(T_DATA, 5, 8'h00);   expect_jpay(0, 5);
         for (i = 0; i < 16; i = i + 1) jpay[i] = $random(seed_d);
@@ -586,6 +606,7 @@ module tb_ni_uart;
         check_pc("8: DATA, RECORD, ALARM, XFER_REQ payloads reach the PC");
 
         // ---- 9: reserved types are consumed and dropped ----
+        section("9: reserved types are consumed and dropped");
         push0 = n_push;
         for (i = 0; i < 64; i = i + 1) jpay[i] = $random(seed_d);
         inject(3'd5, 10, 8'h00);
@@ -599,6 +620,7 @@ module tb_ni_uart;
         check(u_inj.cred == 5'd4 && dut.u_rx.count == 5'd0, "9: all credits returned, NI buffer empty");
 
         // ---- 10: header-only packets push nothing ----
+        section("10: header-only packets push nothing");
         push0 = n_push;
         inject(T_DATA, 0, 8'h00);
         inject(T_XRESP, 0, 8'h00);
@@ -611,6 +633,7 @@ module tb_ni_uart;
         check_pc("10: PC receives nothing");
 
         // ---- 11: long payloads with TX FIFO back-pressure ----
+        section("11: long payloads with TX FIFO back-pressure");
         cov0 = cov_bp;
         for (j = 0; j < 4; j = j + 1) begin
             for (i = 0; i < 63; i = i + 1) jpay[i] = $random(seed_d);
@@ -621,6 +644,7 @@ module tb_ni_uart;
         check(cov_bp - cov0 > 1000, "11: the NI really waited on tx_full");
 
         // ---- 12: en = 0 drains the network and leaves the UART alone ----
+        section("12: en = 0 drains the network and leaves the UART alone");
         en = 1'b0;
         nin0 = pkts_in; push0 = n_push; pop0 = n_pop; n0 = cp_cnt;
         for (i = 0; i < 64; i = i + 1) jpay[i] = $random(seed_d);
@@ -654,6 +678,7 @@ module tb_ni_uart;
         check_pkt(n0, T_XREQ, 3'd4, 1'b0, 3, 8'h01, "12: en = 0 drops a half frame");
 
         // ---- 13: both directions at once ----
+        section("13: both directions at once");
         for (i = 0; i < 8; i = i + 1) begin
             fr_wl[i]  = {$random(seed_d)} % 13;
             fr_rl[i]  = {$random(seed_d)} % 61;
@@ -695,6 +720,7 @@ module tb_ni_uart;
         check_pc("13: random DATA packets reach the PC while frames are sent");
 
         // ---- 14: counters and global assertions ----
+        section("14: counters and global assertions");
         repeat (20) @(posedge clk);
         check(pkts_in == n_inj && pkts_in == nh_in, "14: pkts_in = packets received");
         check(pkts_out == cp_cnt && pkts_out == nh, "14: pkts_out = packets sent");

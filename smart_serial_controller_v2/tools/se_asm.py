@@ -432,6 +432,12 @@ def header_text(progs, hpath):
     return "\n".join(out) + "\n"
 
 
+def line_of(msg):
+    """Line number in 'file:line: ...' (0 for whole-file messages), for sorting."""
+    m = re.search(r":(\d+): ", msg)
+    return int(m.group(1)) if m else 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description="Assembler for the v2 serial engine")
     ap.add_argument("files", nargs="+", help=".se source files")
@@ -448,7 +454,7 @@ def main(argv=None):
         p.assemble()
         for w in p.warnings:
             print(w, file=sys.stderr)
-        for e in p.errors:
+        for e in sorted(p.errors, key=line_of):
             print(e, file=sys.stderr)
         if p.errors:
             ok = False

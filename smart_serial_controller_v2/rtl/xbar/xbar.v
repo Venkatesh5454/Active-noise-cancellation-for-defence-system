@@ -24,15 +24,17 @@
 //                                      SW_CYCLES = counter, ev_switch pulse
 //
 //   * The cycle counter is 0 in the first clock after the write and counts
-//     up by one every clock (it saturates at 0xFFFFFFFF).
+//     up by one every clock (it saturates at 0xFFFFFFFF).  It only runs
+//     while it is needed (switching, or waiting for the first edge).
 //   * WAIT_IDLE looks at src_idle of the old source.  If it is 1 in clock c,
 //     clock c+1 is the FLOAT clock, so the last clock in which the old source
 //     drove the pins was an idle clock: a frame is never cut on the pins.
 //     (A frame that the engine starts in the very clock the port floats never
 //     reaches this port at all - software must stop feeding an engine before
 //     it moves it away.)
-//   * SW_CYCLES = counter value in the first clock in which the new source
-//     drives the pins.  Old source idle: 2 (WAIT 1 clock + FLOAT 1 clock).
+//   * SW_CYCLES = counter value in the hand-over clock, i.e. the first clock
+//     in which the new source drives the pins (the register shows it from
+//     the next clock on).  Old source idle: 2 (WAIT 1 clock + FLOAT 1 clock).
 //     Old source OFF/GPIO or FORCE: 1 (FLOAT only).
 //   * SETTLE lasts 8 clocks starting with the hand-over clock.  The new
 //     source already drives the pins, but sees src_in_idle on this port so
@@ -47,6 +49,10 @@
 //     7 is stored as 7 (it behaves exactly like OFF).
 //   * ev_switch is the OR of all ports: two ports that hand over in the same
 //     clock give one pulse.
+//   * In WAIT_IDLE the old source still owns the port, so it still sees the
+//     pins on its inputs (it may need them to finish, e.g. SPI MISO).
+//   * Only the OLD source is protected.  Switching TO a source that is busy
+//     on another port is allowed; this port then shows the rest of its frame.
 //
 // Registers (byte offset inside the 0x400 region, reg_addr[1:0] ignored):
 //   0x00+4p PIN_SEL[p]   W: [2:0] new source [8] FORCE
@@ -184,7 +190,11 @@ module xbar #(
                     prev_eff <= 8'd0;
                 end else begin
                     prev_eff <= eff;
-                    if (cnt != CNT_MAX) cnt <= cnt + 32'd1;
+                    if ((st != S_IDLE || armed) && cnt != CNT_MAX)
+                        cnt <= cnt + 32'd1;
+
+                    // the counter in the hand-over clock is the switch time
+                    if (ho_now) swc <= cnt;
 
                     // first output edge after the hand-over
                     if (edge_now) begin
@@ -207,7 +217,6 @@ module xbar #(
                         end
                         S_FLOAT: begin                   // hand-over
                             cur   <= req;
-                            swc   <= (cnt == CNT_MAX) ? CNT_MAX : cnt + 32'd1;
                             armed <= 1'b1;
                             sc    <= 3'd0;
                             st    <= S_SETTLE;
@@ -274,15 +283,31 @@ module xbar #(
         end
     endgenerate
 
+    // pick port "idx" out of the 8 slots of each per-port vector
     wire [2:0] idx = reg_addr[4:2];
+    reg  [8:0]  rd_sel;
+    reg  [31:0] rd_swc, rd_swe;
+    always @(*) begin
+        case (idx)
+            3'd0:    begin rd_sel = pinsel_all[8:0];   rd_swc = swc_all[31:0];    rd_swe = swe_all[31:0];    end
+            3'd1:    begin rd_sel = pinsel_all[17:9];  rd_swc = swc_all[63:32];   rd_swe = swe_all[63:32];   end
+            3'd2:    begin rd_sel = pinsel_all[26:18]; rd_swc = swc_all[95:64];   rd_swe = swe_all[95:64];   end
+            3'd3:    begin rd_sel = pinsel_all[35:27]; rd_swc = swc_all[127:96];  rd_swe = swe_all[127:96];  end
+            3'd4:    begin rd_sel = pinsel_all[44:36]; rd_swc = swc_all[159:128]; rd_swe = swe_all[159:128]; end
+            3'd5:    begin rd_sel = pinsel_all[53:45]; rd_swc = swc_all[191:160]; rd_swe = swe_all[191:160]; end
+            3'd6:    begin rd_sel = pinsel_all[62:54]; rd_swc = swc_all[223:192]; rd_swe = swe_all[223:192]; end
+            default: begin rd_sel = pinsel_all[71:63]; rd_swc = swc_all[255:224]; rd_swe = swe_all[255:224]; end
+        endcase
+    end
+
     reg [31:0] rdata;
     always @(*) begin
         rdata = 32'd0;
         case (reg_addr[7:5])
-            3'b000: rdata = {23'd0, pinsel_all[9*idx +: 9]};          // PIN_SEL
+            3'b000: rdata = {23'd0, rd_sel};                          // PIN_SEL
             3'b001: if (idx == 3'd0) rdata = {24'd0, switching};      // XBAR_STATUS
-            3'b010: rdata = swc_all[{idx, 5'b00000} +: 32];           // SW_CYCLES
-            3'b011: rdata = swe_all[{idx, 5'b00000} +: 32];           // SW_EDGE
+            3'b010: rdata = rd_swc;                                   // SW_CYCLES
+            3'b011: rdata = rd_swe;                                   // SW_EDGE
             3'b100: begin
                 case (idx)
                     3'd0:    rdata = gpio_out32;

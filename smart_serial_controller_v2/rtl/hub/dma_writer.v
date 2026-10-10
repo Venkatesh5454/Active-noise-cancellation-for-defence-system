@@ -45,6 +45,9 @@
 //     the SPEC says, and also RD_IDX, so the ring is empty afterwards.  A
 //     burst already on the bus cannot be cut short: it finishes, but it is not
 //     counted (wr, COUNT, PENDING, AXI_ERR stay as RESET left them).
+//     Anything that happens in the same clock as RESET is not counted either.
+//   * An AXI error still uses the slot (the SPEC moves wr after any B), so a
+//     bad memory region gives counted errors instead of a stuck DMA.
 //   * BATCH = 0 disables the count trigger (only the time-out is left).
 //   * The time-out counts ms_ticks: ev_batch comes on the TIMEOUT-th ms_tick
 //     after the oldest pending record was written, i.e. between TIMEOUT-1 and

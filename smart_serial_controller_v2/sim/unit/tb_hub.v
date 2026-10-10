@@ -19,12 +19,13 @@
 //      RUN_NOW of a disabled task is ignored
 //   E. several due tasks run one at a time in index order; HUB_CTRL.EN = 0
 //      holds them; SEND_LAST payloads; EN = 0 lets a running task finish
-//   F. flash logging: TRIG_RECORDS + ADDR_INC (with carry) + APPEND_REC, and
-//      "records since the task last ran"
+//   F. flash logging: TRIG_RECORDS + ADDR_INC (with carry) + APPEND_REC, a
+//      phase counted in records, and "records since the task last ran"
 //   G. wrong tags and non-RESP packets are read and ignored
 //   H. time-out -> ev_error + TMO, the late reply is ignored, the hub goes on
 //   I. status NACK -> ev_error + ERR, no record
-//   J. response longer than 8 bytes keeps 8; HUB_REC_DEST change
+//   J. a 9-byte response keeps the first 8; HUB_REC_DEST change
+//   L. ALARM type goes out with prio 1; the TASK_CFG prio bit
 //   K. all counters, event pulses, tags, credits
 // =============================================================================
 `timescale 1ns / 1ps
@@ -40,7 +41,7 @@ module tb_hub;
 
     integer checks = 0;
     integer errors = 0;
-    task check(input cond, input [8*64-1:0] what);
+    task check(input cond, input [8*80-1:0] what);
         begin
             checks = checks + 1;
             if (!cond) begin
@@ -197,6 +198,21 @@ module tb_hub;
         end
     end
 
+    // ---------------- packet log (everything the hub sends) ----------------
+    reg [2:0] p_type [0:NP-1];
+    reg [2:0] p_dest [0:NP-1];
+    reg [2:0] p_src  [0:NP-1];
+    reg       p_prio [0:NP-1];
+    reg [5:0] p_len  [0:NP-1];
+    reg [7:0] p_tag  [0:NP-1];
+    reg [7:0] p_arg  [0:NP-1];
+    reg [7:0] p_pay  [0:NP*64-1];
+    integer   n_pk = 0;            // complete packets
+    integer   nb = 0;
+    reg       in_pk = 1'b0;
+    integer   n_run = 0;           // requests seen (all non-RECORD packets)
+    integer   bad_src = 0, bad_tag = 0, bad_len = 0;
+
     // ---------------- responder model (nodes 3, 4, 5) ----------------
     integer   rsp_delay  = 300;    // clocks from request to response
     reg [7:0] rsp_status = 8'd0;
@@ -242,21 +258,6 @@ module tb_hub;
             q_push(3'd2, node, p_tag[k], 1 + b, cyc + rsp_delay);
         end
     endtask
-
-    // ---------------- packet log (everything the hub sends) ----------------
-    reg [2:0] p_type [0:NP-1];
-    reg [2:0] p_dest [0:NP-1];
-    reg [2:0] p_src  [0:NP-1];
-    reg       p_prio [0:NP-1];
-    reg [5:0] p_len  [0:NP-1];
-    reg [7:0] p_tag  [0:NP-1];
-    reg [7:0] p_arg  [0:NP-1];
-    reg [7:0] p_pay  [0:NP*64-1];
-    integer   n_pk = 0;            // complete packets
-    integer   nb = 0;
-    reg       in_pk = 1'b0;
-    integer   n_run = 0;           // requests seen (all non-RECORD packets)
-    integer   bad_src = 0, bad_tag = 0, bad_len = 0;
 
     task pk_done;
         begin
@@ -352,7 +353,8 @@ module tb_hub;
                 rd(8'h04);
                 if (!rd_val[0]) begin
                     rd(8'h00);
-                    if (rd_val[15:8] == 8'd0 && q_rd == q_wr && !in_pk) done = 1'b1;
+                    if (rd_val[15:8] == 8'd0 && q_rd == q_wr && !in_pk &&
+                        mon_n == n_pk && u_hub.u_tx.hdr_ready) done = 1'b1;
                 end
                 c = c + 2;
             end
@@ -555,7 +557,7 @@ module tb_hub;
         check(p_type[n0] == 3'd1 && p_dest[n0] == 3'd4 && p_arg[n0] == 8'h01 && p_len[n0] == 6'd3 &&
               p_pay[n0*64] == 8'd1 && p_pay[n0*64+1] == 8'd3 && p_pay[n0*64+2] == 8'h9F,
               "D: XFER_REQ to SPI [01][03][9F]");
-        check_rec(n0 + 1, n0, 3'd2, 3'd2, 8'd2, 8'd3, 16'd4, 64'h0000_0000_0019_BA20);
+        check_rec(n0 + 1, n0, 3'd2, 3'd2, 8'd2, 8'd3, exp_rec + 1, 64'h0000_0000_0019_BA20);
         exp_req = exp_req + 1; exp_ok = exp_ok + 1; exp_rec = exp_rec + 1;
         wait_idle(5);
         rd(8'h14); check(rd_val == 32'h0002_0003, "D: HUB_LAST = task 2, status 0, length 3");
@@ -575,6 +577,11 @@ module tb_hub;
         wait_ms(3);
         check(n_pk == n0 && mon_n == n0, "E: HUB_CTRL.EN = 0 starts nothing");
         rd(8'h00); check(rd_val == 32'h0000_6800, "E: HUB_CTRL shows tasks 3, 5, 6 due");
+        wr(8'h00, 32'h0000_0400);           // RUN_NOW task 2 as well ...
+        rd(8'h00); check(rd_val == 32'h0000_6C00, "E: task 2 due too");
+        wr(8'h60, 32'h0131_0118);           // ... then switch task 2 off and on
+        wr(8'h60, 32'h0131_0119);
+        rd(8'h00); check(rd_val == 32'h0000_6800, "E: EN = 0 on a task clears its due flag");
         rsp_delay = 600;
         wr(8'h00, 32'h0000_0001);           // EN = 1
         wait_pk(n0 + 1, 3);
@@ -591,7 +598,7 @@ module tb_hub;
               p_pay[n0*64+4] == 8'h20 && p_pay[n0*64+5] == 8'hBA && p_pay[n0*64+6] == 8'h19,
               "E: SEND_LAST request [05][01][55 66][20 BA 19]");
         check(p_dest[n0+1] == 3'd5 && p_len[n0+1] == 6'd3, "E: task 5 request");
-        check_rec(n0 + 2, n0 + 1, 3'd2, 3'd5, 8'd3, 8'd2, 16'd5, 64'h800C);
+        check_rec(n0 + 2, n0 + 1, 3'd2, 3'd5, 8'd3, 8'd2, exp_rec + 1, 64'h800C);
         check(p_type[n0+3] == 3'd0 && p_dest[n0+3] == 3'd0 && p_len[n0+3] == 6'd2 &&
               p_pay[(n0+3)*64] == 8'h0C && p_pay[(n0+3)*64+1] == 8'h80,
               "E: SEND_LAST DATA = last value 0C 80 (no length bytes)");
@@ -609,7 +616,7 @@ module tb_hub;
         wr(8'h00, 32'h0000_0001);
         wait_pk(n0 + 3, 3);
         check(n_pk == n0 + 3 && p_tag[n0+2][2:0] == 3'd6, "E2: task 6 runs after EN = 1");
-        check({p_pay[(n0+1)*64+7], p_pay[(n0+1)*64+6]} == 16'd6, "E2: record seq 6");
+        check({p_pay[(n0+1)*64+7], p_pay[(n0+1)*64+6]} == exp_rec + 1, "E2: record seq 6");
         exp_req = exp_req + 2; exp_ok = exp_ok + 1; exp_rec = exp_rec + 1;
         wait_idle(5);
         rsp_delay = 300;
@@ -622,7 +629,7 @@ module tb_hub;
         //         APPEND_REC, TRIG_RECORDS, period 2.  Address starts at 0x01FE00.
         n0 = n_pk;
         wr(8'h84, 32'h0000_0006); wr(8'h8C, 32'h0000_0002); wr(8'h80, 32'h0801_0009);
-        wr(8'hB4, 32'h00FE_0102); wr(8'hBC, 32'h0005_0002); wr(8'hB0, 32'h1C04_0019);
+        wr(8'hB4, 32'h00FE_0102); wr(8'hBC, 32'h0000_0002); wr(8'hB0, 32'h1C04_0019);
         wr(8'h4C, 32'h0000_0003); wr(8'h40, 32'h0121_4B1B);
         wait_pk(n0 + 18, 30);
         wr(8'h40, 32'h0121_4B1A);           // T0 off
@@ -650,22 +657,30 @@ module tb_hub;
         exp_req = exp_req + 12; exp_ok = exp_ok + 9; exp_rec = exp_rec + 6;
         wait_idle(5);
         rd(8'hB4); check(rd_val == 32'h0001_0202, "F: W1 of task B holds the next address 02 01 00");
+        rd(8'h14); check(rd_val == 32'h0007_0002, "F: HUB_LAST = task 7, status 0, length 2");
+        rd(8'h18); check(rd_val == 32'h0000_800C, "F: reply without data keeps the last value");
         wr(8'hB0, 32'h1C04_0018);           // T7 off
 
-        // F2: TRIG_RECORDS counts records since the task last ran
+        // F2: TRIG_RECORDS: phase in records, and "records since the task last ran"
         n0 = n_pk;
-        wr(8'h00, 32'h0000_0401);           // T2 -> record (T4 count 1)
-        wait_pk(n0 + 2, 5); wait_idle(5);
-        wr(8'h00, 32'h0000_1001);           // RUN_NOW T4: runs, count back to 0
+        wr(8'h8C, 32'h0001_0002);           // T4: phase 1 record, then period 2
+        wr(8'h00, 32'h0000_0401);           // T2 -> record: phase over, T4 runs
         wait_pk(n0 + 3, 5); wait_idle(5);
-        wr(8'h00, 32'h0000_0401);           // T2 -> record (count 1): T4 must not run
+        check(n_pk == n0 + 3 && p_type[n0+1] == 3'd3 && p_tag[n0+2][2:0] == 3'd4,
+              "F2: phase 1 -> T4 runs after the first record");
+        wr(8'h00, 32'h0000_0401);           // T2 -> record (count 1 of 2)
         wait_pk(n0 + 5, 5); wait_idle(5);
-        check(n_pk == n0 + 5, "F2: one record after T4 ran does not trigger it");
-        wr(8'h00, 32'h0000_0401);           // T2 -> record (count 2): T4 runs
+        check(n_pk == n0 + 5, "F2: then the period (2 records) applies");
+        wr(8'h00, 32'h0000_1001);           // RUN_NOW T4: runs, count starts again
+        wait_pk(n0 + 6, 5); wait_idle(5);
+        wr(8'h00, 32'h0000_0401);           // T2 -> record (count 1): T4 must not run
         wait_pk(n0 + 8, 5); wait_idle(5);
-        check(n_pk == n0 + 8 && p_tag[n0+2][2:0] == 3'd4 && p_tag[n0+7][2:0] == 3'd4 &&
-              p_type[n0+6] == 3'd3, "F2: second record triggers T4");
-        exp_req = exp_req + 5; exp_ok = exp_ok + 3; exp_rec = exp_rec + 3;
+        check(n_pk == n0 + 8, "F2: one record after T4 ran does not trigger it");
+        wr(8'h00, 32'h0000_0401);           // T2 -> record (count 2): T4 runs
+        wait_pk(n0 + 11, 5); wait_idle(5);
+        check(n_pk == n0 + 11 && p_tag[n0+5][2:0] == 3'd4 && p_tag[n0+10][2:0] == 3'd4 &&
+              p_type[n0+9] == 3'd3, "F2: second record since the last run triggers T4");
+        exp_req = exp_req + 7; exp_ok = exp_ok + 4; exp_rec = exp_rec + 4;
         wr(8'h80, 32'h0801_0008);           // T4 off
 
         // ================= G: wrong tags and junk are ignored =================
@@ -683,7 +698,7 @@ module tb_hub;
         rd(8'h24); check(rd_val == exp_ok, "G: junk not counted as a response");
         check(n_pk == n0 + 1, "G: no record from a wrong-tag response");
         wait_pk(n0 + 2, 5);
-        check_rec(n0 + 1, n0, 3'd2, 3'd2, 8'd2, 8'd3, 16'd13, 64'h0019_BA20);
+        check_rec(n0 + 1, n0, 3'd2, 3'd2, 8'd2, 8'd3, exp_rec + 1, 64'h0019_BA20);
         exp_req = exp_req + 1; exp_ok = exp_ok + 1; exp_rec = exp_rec + 1;
         wait_idle(5);
         rd(8'h18); check(rd_val == 32'h0019_BA20, "G: last value from the right response");
@@ -709,13 +724,13 @@ module tb_hub;
         wait_idle(10);                      // the late reply arrives
         check(n_pk == n0 + 1, "H: no record, late reply ignored");
         rd(8'h24); check(rd_val == exp_ok, "H: late reply not counted");
-        rd(8'h10); check(rd_val == 32'd14, "H: HUB_SEQ unchanged");
+        rd(8'h10); check(rd_val == exp_rec + 1, "H: HUB_SEQ unchanged");
         exp_req = exp_req + 1; exp_tmo = exp_tmo + 1;
         wr(8'h0C, 32'd50);
         rsp_delay = 300;
         wr(8'h00, 32'h0000_0401);           // the hub goes on
         wait_pk(n0 + 3, 5);
-        check_rec(n0 + 2, n0 + 1, 3'd2, 3'd2, 8'd2, 8'd3, 16'd14, 64'h0019_BA20);
+        check_rec(n0 + 2, n0 + 1, 3'd2, 3'd2, 8'd2, 8'd3, exp_rec + 1, 64'h0019_BA20);
         exp_req = exp_req + 1; exp_ok = exp_ok + 1; exp_rec = exp_rec + 1;
         wait_idle(5);
 
@@ -733,20 +748,20 @@ module tb_hub;
         rd(8'h28); check(rd_val == 32'd1, "I: ERR = 1");
         rd(8'h14); check(rd_val == 32'h0005_0103, "I: HUB_LAST status 1, task 5, length kept");
         rd(8'h18); check(rd_val == 32'h0019_BA20, "I: last value kept");
-        rd(8'h10); check(rd_val == 32'd15, "I: HUB_SEQ unchanged");
+        rd(8'h10); check(rd_val == exp_rec + 1, "I: HUB_SEQ unchanged");
         exp_req = exp_req + 1; exp_err = exp_err + 1;
         wr(8'h90, 0);
 
         // ================= J: long response, REC_DEST =================
-        // T6: XFER_REQ to UART (3), wlen 0, rlen 12, RECORD
+        // T6: XFER_REQ to UART (3), wlen 0, rlen 9 (one byte more than kept), RECORD
         n0 = n_pk;
         wr(8'h08, 32'hFFFF_FFF7); rd(8'h08); check(rd_val == 32'd7, "J: HUB_REC_DEST = 7");
-        wr(8'hA0, 32'h01C0_0017);
+        wr(8'hA0, 32'h0190_0017);
         wr(8'h00, 32'h0000_4001);
         wait_pk(n0 + 2, 5);
-        check(p_len[n0] == 6'd2 && p_pay[n0*64] == 8'd0 && p_pay[n0*64+1] == 8'd12,
-              "J: request [00][0C]");
-        check_rec(n0 + 1, n0, 3'd7, 3'd6, 8'd1, 8'd8, 16'd15, 64'h7766_5544_3322_115A);
+        check(p_len[n0] == 6'd2 && p_pay[n0*64] == 8'd0 && p_pay[n0*64+1] == 8'd9,
+              "J: request [00][09]");
+        check_rec(n0 + 1, n0, 3'd7, 3'd6, 8'd1, 8'd8, exp_rec + 1, 64'h7766_5544_3322_115A);
         exp_req = exp_req + 1; exp_ok = exp_ok + 1; exp_rec = exp_rec + 1;
         wait_idle(5);
         rd(8'h14); check(rd_val == 32'h0006_0008, "J: HUB_LAST length 8 (first 8 kept)");
@@ -754,6 +769,25 @@ module tb_hub;
         rd(8'h1C); check(rd_val == 32'h7766_5544, "J: HUB_LAST_HI");
         wr(8'h08, 32'd2);
         wr(8'hA0, 0);
+
+        // ================= L: ALARM type and the prio bit =================
+        // T1: ALARM (type 4) to node 0, arg 05, wlen 1 (A5), period 0
+        n0 = n_pk;
+        wr(8'h54, 32'h0000_00A5); wr(8'h5C, 32'h0); wr(8'h50, 32'h0001_0541);
+        wr(8'h00, 32'h0000_0201);
+        wait_pk(n0 + 1, 3);
+        rd(8'h04); check(rd_val[0] == 1'b0, "L: ALARM does not wait for a reply");
+        check(p_type[n0] == 3'd4 && p_prio[n0] == 1'b1 && p_dest[n0] == 3'd0 &&
+              p_arg[n0] == 8'h05 && p_len[n0] == 6'd1 && p_pay[n0*64] == 8'hA5,
+              "L: ALARM packet sent with prio 1, raw bytes");
+        wr(8'h50, 32'h0001_0581);           // DATA with the prio bit set
+        wr(8'h00, 32'h0000_0201);
+        wait_pk(n0 + 2, 3);
+        check(p_type[n0+1] == 3'd0 && p_prio[n0+1] == 1'b1 && p_len[n0+1] == 6'd1,
+              "L: TASK_CFG prio bit sets the head prio");
+        exp_req = exp_req + 2;
+        wait_idle(5);
+        wr(8'h50, 0);
 
         // ================= K: totals =================
         rd(8'h20); check(rd_val == exp_req, "K: REQ counter");

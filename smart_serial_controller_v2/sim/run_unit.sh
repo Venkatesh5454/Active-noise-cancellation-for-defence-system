@@ -32,6 +32,7 @@ run_tb() {
 
 run_tb tb_noc_pkt  sim/unit/tb_noc_pkt.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v \
                    rtl/top/ssc2_timebase.v
+run_tb tb_xbar     sim/unit/tb_xbar.v rtl/xbar/xbar.v
 
 echo
 if [ -n "$FAILED" ]; then

@@ -264,10 +264,10 @@ module tb_xbar;
                         m_cur[p] = m_req[p];
                         m_st[p]  = S_SETTLE;
                         m_sc[p]  = 0;
-                        m_swc[p] = cyc + 1 - m_c0[p];
                         m_arm[p] = 1;
                     end
                     default: begin
+                        if (m_sc[p] == 0) m_swc[p] = cyc - m_c0[p];   // hand-over clock
                         if (m_sc[p] == 7) m_st[p] = S_IDLE;
                         else              m_sc[p] = m_sc[p] + 1;
                     end

@@ -186,13 +186,13 @@ module ni_i2c (
     wire push_w = (st == S_WRITE) && (np != wlen) && b_valid && !tx_full &&
                   !stall && (issued || !busy);
     // issue the write command when every byte is queued (or 16 are, for a
-    // long DATA packet)
-    wire cmd_w  = (st == S_WRITE) && !issued && !busy && !stall &&
+    // long DATA packet); never in the clock the timer runs out
+    wire cmd_w  = (st == S_WRITE) && !issued && !busy && !stall && !tmo_hit &&
                   ((np == wlen) || (np == 6'd16));
     // read phase: first empty the RX FIFO, then issue the read command,
     // then pop the bytes as they arrive
     wire pop_r  = (st == S_READ) && !rx_empty && !stall && (!issued || (nr != rlen));
-    wire cmd_r  = (st == S_READ) && !issued && !busy && !stall && rx_empty;
+    wire cmd_r  = (st == S_READ) && !issued && !busy && !stall && !tmo_hit && rx_empty;
 
     assign tx_push   = push_w;
     assign tx_data   = b_data;

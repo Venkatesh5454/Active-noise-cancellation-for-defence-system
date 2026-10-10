@@ -17,8 +17,9 @@
 //   * EN rising or a W3 write loads the countdown with phase (or period if
 //     phase = 0).  Every ms_tick it counts down; when it reaches 0 the task
 //     becomes "due" and the countdown reloads with the period.
-//   * TRIG_RECORDS tasks instead count the RECORDs the hub sends; they become
-//     due when PERIOD records were sent since the task last ran.
+//   * TRIG_RECORDS tasks count the RECORDs the hub sends instead of ms; the
+//     countdown restarts with the period every time the task runs, so the
+//     task is due when PERIOD records were sent since it last ran.
 //   * HUB_CTRL[8+t] (write 1) makes an enabled task due at once (RUN_NOW).
 //   * Due tasks run one at a time, the lowest index first.  HUB_CTRL.EN = 0
 //     stops new tasks from starting (a running task still finishes).
@@ -36,9 +37,10 @@
 //      status != 0 or time-out: ev_error and an error counter, no record
 //
 // Design choices (where the SPEC leaves room):
-//   * Period 0 means "never periodic": the task then only runs by RUN_NOW or
-//     (TRIG_RECORDS) never.  A phase with period 0 gives one delayed run.
-//   * TRIG_RECORDS tasks ignore the phase field.
+//   * Period 0 means "never periodic": the task then only runs by RUN_NOW.
+//     A phase with period 0 gives one delayed run.
+//   * For a TRIG_RECORDS task the phase counts records too: the first run
+//     comes after PHASE records (0 = one period) from EN / the W3 write.
 //   * A due flag is not a queue: if a task is due again before it ran, it
 //     still runs only once.  Disabling a task (EN = 0) clears its due flag;
 //     RUN_NOW is ignored for disabled tasks.  Countdowns keep running while
@@ -167,8 +169,7 @@ module hub (
         for (gt = 0; gt < 8; gt = gt + 1) begin : g_task
             reg  [28:0] cfg;
             reg  [31:0] w1, w2, w3;
-            reg  [15:0] cd;           // ms countdown (0 = stopped)
-            reg  [15:0] rc;           // records sent since this task last ran
+            reg  [15:0] cd;           // countdown in ms or records (0 = stopped)
             reg         due;
 
             wire we0 = we_task && a_onehot[gt] && (a_w == 2'd0);
@@ -189,13 +190,12 @@ module hub (
             wire [15:0] load_val = (new_ph != 16'd0) ? new_ph : new_per;
 
             wire        starting = start_oh[gt];
-            wire [15:0] rc_inc   = (rc == 16'hFFFF) ? rc : rc + 16'd1;
 
-            // the three ways to become due
-            wire tick_due = ms_tick && en && !trig && (cd == 16'd1) && !load;
-            wire rec_due  = rec_evt && en && trig && (period != 16'd0) &&
-                            (rc_inc >= period) && !load;
-            wire now_due  = we_ctrl && reg_wdata[8+gt] && en;
+            // one countdown step: an ms_tick (timed task) or a record sent
+            // (TRIG_RECORDS task).  Reaching 0 makes the task due.
+            wire step     = en && (trig ? rec_evt : ms_tick);
+            wire step_due = step && (cd == 16'd1) && !load;
+            wire now_due  = we_ctrl && reg_wdata[8+gt] && en;     // RUN_NOW
 
             // ADDR_INC: bytes 1..3 = big-endian address; +256 = +1 on bytes 1..2
             wire [15:0] a_next = {w1[15:8], w1[23:16]} + 16'd1;
@@ -207,7 +207,6 @@ module hub (
                     w2  <= 32'd0;
                     w3  <= 32'd0;
                     cd  <= 16'd0;
-                    rc  <= 16'd0;
                     due <= 1'b0;
                 end else begin
                     // configuration words (the CPU always wins)
@@ -219,22 +218,19 @@ module hub (
                     if (we2) w2 <= reg_wdata;
                     if (we3) w3 <= reg_wdata;
 
-                    // ms countdown (timed tasks only)
+                    // countdown.  A TRIG_RECORDS task restarts it every time
+                    // it runs, so it counts "records since the task last ran".
                     if (load)
                         cd <= load_val;
-                    else if (ms_tick && en && !trig && (cd != 16'd0))
+                    else if (starting && trig)
+                        cd <= period;
+                    else if (step && (cd != 16'd0))
                         cd <= (cd == 16'd1) ? period : cd - 16'd1;
-
-                    // record counter (TRIG_RECORDS tasks)
-                    if (load || starting)
-                        rc <= 16'd0;
-                    else if (rec_evt && en && trig)
-                        rc <= rc_inc;
 
                     // due flag
                     if (we0 && !reg_wdata[0])
                         due <= 1'b0;                      // task switched off
-                    else if (tick_due || rec_due || now_due)
+                    else if (step_due || now_due)
                         due <= 1'b1;
                     else if (starting)
                         due <= 1'b0;
