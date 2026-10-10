@@ -20,7 +20,9 @@
 //   1. slides 16-18: XFER_REQ 0x4B [01][02][00] -> [00][0C 80], bus log
 //      "S 96 A 00 A Sr 97 A 0C A 80 N P" (repeated START)
 //   2. write only, 3. write then read back, 4. read only (no write phase)
-//   5. long read: rlen 60 (bytes popped as they arrive), heavy stall
+//   5. long read: rlen 60 (bytes popped as they arrive), heavy stall;
+//      5b a 300 us stall fills the RX FIFO (the engine waits), 5c the stall
+//      covers the end of a read, so ev_done comes before the last bytes
 //   6. address probe (wlen = rlen = 0): ACK -> [00], no device -> [01]
 //   7. NACK on the write address and on the read address -> [01]; the unsent
 //      write byte is flushed (abort) and the next read is correct
@@ -30,7 +32,8 @@
 //  10. bad requests -> [04] (wlen > 16, rlen > 60, wrong lengths)
 //  11. DATA: 5-byte write, 20-byte write (one transaction), DATA with NACK
 //  12. the CPU leaves 2 old bytes in the RX FIFO; the NI throws them away.
-//      NI requests that arrive while the CPU's own command runs wait for it
+//      NI requests that arrive while the CPU's own command runs wait for it;
+//      a stuck CPU command does not get the NI's byte, the NI times out
 //  13. other packet types and en = 0: consumed and dropped, bus untouched
 //  14. heavy stall + 3 back-to-back requests + reply back-pressure
 //  15. counters
@@ -262,7 +265,7 @@ module tb_ni_i2c;
     // ------------------------------------------------------------------
     integer stall_viol = 0, stall_busy_cycles = 0, cmd_busy = 0;
     integer push_cnt = 0, cmd_cnt = 0, abort_cnt = 0, act_rises = 0;
-    integer ovf_bad = 0, rep_early = 0, max_rx = 0;
+    integer ovf_bad = 0, rep_early = 0, max_rx = 0, nr_at_done = 0;
     reg     act_q = 1'b0;
     realtime cmd_t = 0.0, abort_t = 0.0;
     always @(posedge clk) if (rst_n) begin
@@ -283,6 +286,7 @@ module tb_ni_i2c;
         act_q = ni_active;
         if (i_ev_tx_ovf) ovf_bad = ovf_bad + 1;
         if (ni_active && i_rx_count > max_rx) max_rx = i_rx_count;
+        if (i_ev_done && dut.st == 4'd5 && dut.issued) nr_at_done = dut.nr;
         // a reply head flit may only leave once the engine is idle and free
         if (rep_valid && rep_flit[33:32] != 2'b01 && rep_flit[33:32] != 2'b10 &&
             (ni_active || i_busy || i_holding))
@@ -512,6 +516,41 @@ module tb_ni_i2c;
         check(mon.nev == 3 + 1 + 1 + 60 + 1, "5: one transaction: S, 00, Sr, 97, 60 bytes, P");
         $display("    most bytes waiting in the RX FIFO: %0d", max_rx);
         check(max_rx <= 2, "5: bytes popped as they arrive (RX FIFO never filled)");
+        // 5b: the CPU keeps the bus (stall) for 300 us in the middle of a read
+        $display("    5b: read 24 bytes, stall held for 300 us after byte 2: RX FIFO fills");
+        mon.clear; n0 = nrp; max_rx = 0;
+        fork
+            xfer(3'd0, 8'h2B, 8'h4B, 8'd1, 8'd24, 8'h00, 8'h00, 8'h00);
+            begin
+                wait (dut.st == 4'd5 && dut.issued && dut.nr == 2);
+                @(negedge clk); cpu_stall = 1'b1;
+                #300000;
+                @(negedge clk); cpu_stall = 1'b0;
+            end
+        join
+        wait_replies(n0 + 1);
+        exp[0] = 8'h00;
+        for (i = 0; i < 24; i = i + 1) exp[1 + i] = tmp2_reg(i);
+        check_reply(n0, 3'd0, 8'h2B, 8'h4B, 6'd25, "5b: 25-byte reply correct after the long stall");
+        check(max_rx == 16 && mon.nev == 3 + 1 + 1 + 24 + 1,
+              "5b: RX FIFO full (16), engine waited, still one transaction");
+        // 5c: the stall covers the end of the read: ev_done comes first
+        $display("    5c: read 4 bytes, stall from byte 1 until after ev_done");
+        n0 = nrp; nr_at_done = 99;
+        fork
+            xfer(3'd0, 8'h2C, 8'h4B, 8'd1, 8'd4, 8'h04, 8'h00, 8'h00);
+            begin
+                wait (dut.st == 4'd5 && dut.issued && dut.nr == 1);
+                @(negedge clk); cpu_stall = 1'b1;
+                @(posedge i_ev_done);
+                #10000;
+                @(negedge clk); cpu_stall = 1'b0;
+            end
+        join
+        wait_replies(n0 + 1);
+        exp[0] = 8'h00; exp[1] = 8'h44; exp[2] = 8'h45; exp[3] = 8'h46; exp[4] = 8'h47;
+        check_reply(n0, 3'd0, 8'h2C, 8'h4B, 6'd5, "5c: reply [00][44 45 46 47]");
+        check(nr_at_done == 1, "5c: ev_done came with 3 bytes still in the RX FIFO");
 
         // ---- 6. address probe ----
         $display("[6] address probe (wlen = rlen = 0)");
@@ -736,6 +775,29 @@ module tb_ni_i2c;
         exp_ev[12] = 1001;  exp_ev[13] = 'h097; exp_ev[14] = 'h00C; exp_ev[15] = 'h180;
         exp_ev[16] = 1002;
         expect_bus("12: CPU write, then NI probe, then NI read - in that order");
+        // a CPU command that waits for a byte the CPU never pushes keeps the
+        // engine busy: the NI must not feed it its own byte; it times out
+        $display("    CPU write of 2 bytes with only 1 pushed (engine stuck), then a TMP2 read");
+        wait_idle;
+        cpu_en = 1'b1; cpu_auto = 1'b0; cpu_ten = 1'b0; cpu_addr = 10'h04B;
+        timeout_us = 16'd100;
+        mon.clear; n0 = nrp; a0 = abort_cnt; d0 = tmp2.nwlog;
+        cpu_tx_push(8'h0C);
+        cpu_command(8'd2, 1'b0, 1'b1);
+        xfer(3'd1, 8'h84, 8'h4B, 8'd1, 8'd2, 8'h00, 8'h00, 8'h00);
+        wait_replies(n0 + 1);
+        exp[0] = 8'h03;
+        check_reply(n0, 3'd1, 8'h84, 8'h4B, 6'd1, "12: engine never free -> time-out [03]");
+        check(tmp2.nwlog - d0 == 1 && abort_cnt - a0 == 1 && i_tx_empty,
+              "12: the NI's byte was not given to the CPU's command; abort cleaned up");
+        cpu_en = 1'b0; cpu_auto = 1'b1; cpu_ten = 1'b1; cpu_addr = 10'h2A5;
+        timeout_us = 16'd1000;
+        wait_idle;
+        mon.in_xfer = 1'b0;                               // (no STOP was seen)
+        xfer(3'd1, 8'h85, 8'h4B, 8'd1, 8'd2, 8'h00, 8'h00, 8'h00);
+        wait_replies(n0 + 2);
+        exp[0] = 8'h00; exp[1] = 8'h0C; exp[2] = 8'h80;
+        check_reply(n0 + 1, 3'd1, 8'h85, 8'h4B, 6'd3, "12: next request works");
 
         // ---- 13. other packet types, en = 0 ----
         $display("[13] other packet types and en = 0: consumed, nothing on the bus");

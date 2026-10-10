@@ -35,6 +35,9 @@ run_tb tb_noc_pkt  sim/unit/tb_noc_pkt.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx
 run_tb tb_xbar     sim/unit/tb_xbar.v rtl/xbar/xbar.v
 run_tb tb_dma_writer sim/unit/tb_dma_writer.v rtl/hub/dma_writer.v sim/models/axi_mem_model.v \
                    rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v
+run_tb tb_ni_uart  sim/unit/tb_ni_uart.v rtl/noc/ni_uart.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v \
+                   rtl/top/ssc2_timebase.v rtl/v1/ssc_uart.v rtl/v1/ssc_fifo.v rtl/v1/ssc_baud_gen.v \
+                   rtl/v1/ssc_sync_filter.v sim/models/tb_uart_term.v
 
 echo
 if [ -n "$FAILED" ]; then

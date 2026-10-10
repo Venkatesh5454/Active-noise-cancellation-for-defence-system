@@ -250,6 +250,15 @@ module tb_se_engine;
                 errors = errors + 1;
                 $display("FAIL: EXEC %h on SM%0d never finished (t=%0t)", ins, s, $time);
             end
+            // CRC n / OUT crc, n keep the SM stalled for n more clocks:
+            // wait for STATE.stalled = 0 before reading SMs_CRC
+            if ((ins[15:13] == 3'd7 && !ins[7]) || (ins[15:13] == 3'd3 && ins[7:5] == D_CRC)) begin
+                n = 0;
+                while (rv[8] && n < 100) begin
+                    rd(SA(s, O_STATE));
+                    n = n + 1;
+                end
+            end
         end
     endtask
 
@@ -434,10 +443,6 @@ module tb_se_engine;
         wr(A_CRCCFG, 32'h1D0F_8005);
         rchk(A_CRCCFG, 32'h1D0F_8005, "SE_CRC_CFG read-back");
         wr(A_CRCCFG, 32'hFFFF_1021);
-        wr(A_CTRL, 32'h0000_0303);
-        rchk(A_CTRL, 32'h0000_0003, "SE_CTRL: EN bits read back, RESTART bits read 0");
-        rchk(SA(1, O_STATE) & 32'h200, 32'h200, "STATE[9] enabled");
-        wr(A_CTRL, 32'h0);
         // unused / write-only addresses read 0
         rchk(9'h03C, 32'h0, "0x03C reads 0");
         rchk(9'h040, 32'h0, "0x040 reads 0");
@@ -458,8 +463,15 @@ module tb_se_engine;
             if (rv !== {16'd0, pg[i]}) bad = bad + 1;
         end
         check(bad == 0, "PROG[0..31] write / read-back");
-        smcfg(0, 32'h0001_0000, 32'h0, 32'h0);
+        smcfg(0, 32'h0001_0000, 32'h0, 32'h0);          // START_PC = 0 again
         smcfg(1, 32'h0001_0000, 32'h0, 32'h0);
+        pl(0, i_jmp(C_ALW, 5'd0, 5'd0));                 // a safe program: JMP 0
+        wr(A_CTRL, 32'h0000_0303);
+        rchk(A_CTRL, 32'h0000_0003, "SE_CTRL: EN bits read back, RESTART bits read 0");
+        rchkm(SA(1, O_STATE), 32'h200, 32'h200, "STATE[9] enabled");
+        check(sm_idle == 2'b00, "sm_idle = 00 while both SMs run JMP 0");
+        wr(A_CTRL, 32'h0000_0300);                       // stop + restart both
+        check(sm_idle == 2'b11, "sm_idle = 11 after disabling");
 
         // =================================================================
         // B. TX FIFO and PULL
@@ -763,9 +775,9 @@ module tb_se_engine;
         ex(0, i_pull(1'b1, 5'b1_0000));                 // stalls (TX empty) but side-set happens
         clks(4);
         rchkm(SA(0, O_PINS), 32'hFF0, 32'hF90, "side-set is driven even when the instruction stalls");
-        rchk(SA(0, O_STATE) & 32'h500, 32'h500, "... and the PULL is stalled");
+        rchkm(SA(0, O_STATE), 32'h500, 32'h500, "... and the PULL is stalled");
         exw(0, i_set(D_X, 5'd7, 5'b0_0000));            // a new EXEC replaces the stalled one
-        rchk(SA(0, O_STATE) & 32'h500, 32'h000, "a new EXEC replaces a stalled EXEC");
+        rchkm(SA(0, O_STATE), 32'h500, 32'h000, "a new EXEC replaces a stalled EXEC");
         rchkm(SA(0, O_PINS), 32'hFF0, 32'hF10, "side 0 after the replacement");
         rchk(SA(0, O_X), 32'd7, "replacement EXEC ran");
         wr(SA(0, O_PINCTRL), pinctrl_f(0, 0, 3'd1, 0, 2'd0, 1'b1, 0, 4'b0000, 4'h0, 4'hF));
@@ -799,9 +811,9 @@ module tb_se_engine;
         rchkm(A_FSTAT, 32'h3000_0000, 32'h0, "overflow flag cleared by the read");
         ex(0, i_push(1'b1, 5'd0));                      // block, full: stalls
         clks(3);
-        rchk(SA(0, O_STATE) & 32'h500, 32'h500, "PUSH block on full FIFO stalls");
+        rchkm(SA(0, O_STATE), 32'h500, 32'h500, "PUSH block on full FIFO stalls");
         rchk(SA(0, O_RXF), 32'd1, "RXF pop (1)");
-        rchk(SA(0, O_STATE) & 32'h500, 32'h000, "PUSH completes after a pop");
+        rchkm(SA(0, O_STATE), 32'h500, 32'h000, "PUSH completes after a pop");
         rchk(SA(0, O_RXF), 32'd2, "RXF pop (2)");
         rchk(SA(0, O_RXF), 32'd3, "RXF pop (3)");
         rchk(SA(0, O_RXF), 32'd4, "RXF pop (4)");
@@ -894,16 +906,18 @@ module tb_se_engine;
         pl(3, i_crc(6'd32, 5'd0));
         pl(4, i_jmp(C_ALW, 5'd0, 5'd0));
         smcfg(0, 32'h0001_0000, pinctrl_f(0, 0, 3'd1, 0, 0, 0, 0, 0, 0, 4'h1), 32'h0);
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(5, 2000);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
         check_eq(edge_t[1] - edge_t[0], 32'd100, "high = SET + CRC 8 (1 + 8 stall) + 1 = 10 clocks");
-        check_eq(edge_t[2] - edge_t[1], 32'd360, "low = SET + CRC 32 (1 + 32 stall) + JMP + 1 = 36");
+        check_eq(edge_t[2] - edge_t[1], 32'd350, "low = SET + CRC 32 (1 + 32 stall) + JMP = 35 clocks");
         smcfg(0, 32'h0014_0000, pinctrl_f(0, 0, 3'd1, 0, 0, 0, 0, 0, 0, 4'h1), 32'h0);
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(3, 3000);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
@@ -938,8 +952,9 @@ module tb_se_engine;
         pl(1, i_set(D_PINS, 5'd0, 5'd5));
         pl(2, i_jmp(C_ALW, 5'd0, 5'd0));
         smcfg(0, 32'h0001_0000, pinctrl_f(0, 0, 3'd1, 0, 0, 0, 0, 0, 0, 4'h1), 32'h0);
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(9, 500);
         bad = 0;
         for (i = 1; i < 9; i = i + 1)
@@ -958,8 +973,9 @@ module tb_se_engine;
         wr(A_CTRL, 32'h0);
         pl(0, i_set(D_PINS, 5'd1, 5'd31));
         wr(SA(0, O_CLKDIV), 32'h0001_0000);
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(3, 500);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
@@ -968,8 +984,9 @@ module tb_se_engine;
         pl(0, i_jmp(C_ALW, 5'd1, 5'b1_0010));            // JMP 1 side 1 [2]
         pl(1, i_jmp(C_ALW, 5'd0, 5'b0_0100));            // JMP 0 side 0 [4]
         smcfg(0, 32'h0001_0000, pinctrl_f(0, 0, 0, 0, 2'd0, 1'b1, 0, 0, 0, 4'h1), 32'h0);
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(6, 500);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
@@ -979,8 +996,9 @@ module tb_se_engine;
         pl(0, i_jmp(C_ALW, 5'd1, 5'b1_0000));
         pl(1, i_jmp(C_ALW, 5'd0, 5'b0_0000));
         wr(SA(0, O_CLKDIV), 32'h006C_8000);              // 108.5
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(201, 30000);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
@@ -991,24 +1009,27 @@ module tb_se_engine;
             else bad = bad + 1;
         end
         check(bad == 0 && lo == 100 && hi == 100, "INT=108 FRAC=128: periods 108 / 109 alternate");
-        check_eq(edge_t[200] - edge_t[0], 32'd2170000, "200 ticks = 21700 clocks (108.5 average)");
+        check_eq(edge_t[200] - edge_t[0], 32'd217000, "200 ticks = 21700 clocks (108.5 average)");
         wr(SA(0, O_CLKDIV), 32'h0002_4000);              // 2.25
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(401, 3000);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
         check_eq(edge_t[400] - edge_t[0], 32'd9000, "INT=2 FRAC=64: 400 ticks = 900 clocks");
         wr(SA(0, O_CLKDIV), 32'h0001_8000);              // 1.5
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(201, 3000);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
         check_eq(edge_t[200] - edge_t[0], 32'd3000, "INT=1 FRAC=128: 200 ticks = 300 clocks");
         wr(SA(0, O_CLKDIV), 32'h0000_0000);              // INT = 0 counts as 1
+        wr(A_CTRL, 32'h100);
         mon_start(3'd0);
-        wr(A_CTRL, 32'h101);
+        wr(A_CTRL, 32'h001);
         wait_edges(41, 500);
         wr(A_CTRL, 32'h0);
         mon_en = 1'b0;
@@ -1064,7 +1085,7 @@ module tb_se_engine;
         wr(A_CTRL, 32'h101);
         clks(20);
         ex(0, i_set(D_Y, 5'd7, 5'd0));
-        rchk(SA(0, O_STATE) & 32'h400, 32'h400, "EXEC on a running SM waits for the next tick");
+        rchkm(SA(0, O_STATE), 32'h400, 32'h400, "EXEC on a running SM waits for the next tick");
         exw(0, i_set(D_Y, 5'd7, 5'd0));
         rchk(SA(0, O_Y), 32'd7, "EXEC SET y, 7 ran on the running SM");
         rchkm(SA(0, O_STATE), 32'h71F, 32'h20A, "PC still 10, running, nothing pending");
