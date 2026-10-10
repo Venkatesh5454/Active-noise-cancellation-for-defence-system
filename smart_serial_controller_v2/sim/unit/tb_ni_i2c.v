@@ -29,7 +29,8 @@
 //      [03]; the next request works.  timeout_us = 0 -> [03], bus untouched
 //  10. bad requests -> [04] (wlen > 16, rlen > 60, wrong lengths)
 //  11. DATA: 5-byte write, 20-byte write (one transaction), DATA with NACK
-//  12. the CPU leaves 2 old bytes in the RX FIFO; the NI throws them away
+//  12. the CPU leaves 2 old bytes in the RX FIFO; the NI throws them away.
+//      NI requests that arrive while the CPU's own command runs wait for it
 //  13. other packet types and en = 0: consumed and dropped, bus untouched
 //  14. heavy stall + 3 back-to-back requests + reply back-pressure
 //  15. counters
@@ -712,6 +713,29 @@ module tb_ni_i2c;
         exp[0] = 8'h00; exp[1] = 8'h0C; exp[2] = 8'h80;
         check_reply(n0, 3'd1, 8'h81, 8'h4B, 6'd3, "12: old bytes thrown away, reply [00][0C 80]");
         check(i_rx_empty, "12: RX FIFO empty afterwards");
+        // the CPU is in the middle of its own write when NI requests arrive:
+        // the NI must wait until the engine is no longer busy
+        $display("    CPU writes 3 bytes; a probe and a TMP2 read arrive meanwhile");
+        wait_idle;
+        cpu_en = 1'b1; cpu_auto = 1'b0; cpu_ten = 1'b0; cpu_addr = 10'h04B;
+        mon.clear; n0 = nrp;
+        cpu_tx_push(8'h0C); cpu_tx_push(8'h4C); cpu_tx_push(8'h4D);   // same values
+        cpu_command(8'd3, 1'b0, 1'b1);
+        xfer(3'd1, 8'h82, 8'h4B, 8'd0, 8'd0, 8'h00, 8'h00, 8'h00);   // probe
+        xfer(3'd1, 8'h83, 8'h4B, 8'd1, 8'd2, 8'h00, 8'h00, 8'h00);   // TMP2 read
+        wait_replies(n0 + 2);
+        cpu_en = 1'b0; cpu_auto = 1'b1; cpu_ten = 1'b1; cpu_addr = 10'h2A5;
+        exp[0] = 8'h00;
+        check_reply(n0, 3'd1, 8'h82, 8'h4B, 6'd1, "12: probe after the CPU's write -> [00]");
+        exp[0] = 8'h00; exp[1] = 8'h0C; exp[2] = 8'h80;
+        check_reply(n0 + 1, 3'd1, 8'h83, 8'h4B, 6'd3, "12: TMP2 read after it -> [00][0C 80]");
+        n_exp = 17;
+        exp_ev[0]  = 1000;  exp_ev[1]  = 'h096; exp_ev[2]  = 'h00C; exp_ev[3]  = 'h04C;
+        exp_ev[4]  = 'h04D; exp_ev[5]  = 1002;  exp_ev[6]  = 1000;  exp_ev[7]  = 'h096;
+        exp_ev[8]  = 1002;  exp_ev[9]  = 1000;  exp_ev[10] = 'h096; exp_ev[11] = 'h000;
+        exp_ev[12] = 1001;  exp_ev[13] = 'h097; exp_ev[14] = 'h00C; exp_ev[15] = 'h180;
+        exp_ev[16] = 1002;
+        expect_bus("12: CPU write, then NI probe, then NI read - in that order");
 
         // ---- 13. other packet types, en = 0 ----
         $display("[13] other packet types and en = 0: consumed, nothing on the bus");

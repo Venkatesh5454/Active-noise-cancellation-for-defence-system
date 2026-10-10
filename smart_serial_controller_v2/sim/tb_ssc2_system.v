@@ -116,12 +116,16 @@ module tb_ssc2_system;
     tb_uart_term la (.rx(jd[1]), .tx(la_tx_unused));     // decodes UART frames on JD2
 
     // ---------------- DDR stand-in ----------------
-    axi_mem_model mem (
+    axi_mem_model #(.MEM_BYTES(65536), .BASE_ADDR(32'h0010_0000), .SEED(7),
+                    .AW_READY_PCT(70), .W_READY_PCT(70), .B_MAX_DELAY(5),
+                    .NAME("ddr")) mem (
         .clk(clk), .rst_n(aresetn),
-        .awaddr(m_awaddr), .awlen(m_awlen), .awsize(m_awsize), .awburst(m_awburst),
-        .awcache(m_awcache), .awprot(m_awprot), .awvalid(m_awvalid), .awready(m_awready),
-        .wdata(m_wdata), .wstrb(m_wstrb), .wlast(m_wlast), .wvalid(m_wvalid), .wready(m_wready),
-        .bresp(m_bresp), .bvalid(m_bvalid), .bready(m_bready)
+        .s_axi_awaddr(m_awaddr), .s_axi_awlen(m_awlen), .s_axi_awsize(m_awsize),
+        .s_axi_awburst(m_awburst), .s_axi_awcache(m_awcache), .s_axi_awprot(m_awprot),
+        .s_axi_awvalid(m_awvalid), .s_axi_awready(m_awready),
+        .s_axi_wdata(m_wdata), .s_axi_wstrb(m_wstrb), .s_axi_wlast(m_wlast),
+        .s_axi_wvalid(m_wvalid), .s_axi_wready(m_wready),
+        .s_axi_bresp(m_bresp), .s_axi_bvalid(m_bvalid), .s_axi_bready(m_bready)
     );
 
     // ---------------- helpers ----------------
@@ -212,7 +216,7 @@ module tb_ssc2_system;
     function [7:0] mb;
         input [31:0] addr;
         begin
-            mb = mem.read_byte(addr);
+            mb = mem.rd8(addr);
         end
     endfunction
 
@@ -429,7 +433,7 @@ module tb_ssc2_system;
         check(apb0 >= 10 && irq0 == 2, "v1 style costs ~10-20 accesses + 2 IRQs per reading");
 
         // ------------------------------------------------------------------
-        check(mem.errors == 0, "AXI memory model saw no protocol errors");
+        check(mem.proto_errors == 0 && mem.range_errors == 0, "AXI memory model saw no protocol or address errors");
         $display("==============================================================");
         if (errors == 0) $display("ALL %0d CHECKS PASSED", checks);
         else             $display("%0d OF %0d CHECKS FAILED", errors, checks);

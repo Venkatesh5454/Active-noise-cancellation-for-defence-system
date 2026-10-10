@@ -11,7 +11,7 @@
 //               [15:8] arg [19:16] wlen [23:20] rlen [24] RECORD [25] SEND_LAST
 //               [26] ADDR_INC [27] TRIG_RECORDS [28] APPEND_REC
 //   W1 / W2     write bytes 0..3 / 4..7 (byte 0 in [7:0])
-//   W3 TIMING   [15:0] period (ms, or records), [31:16] phase (ms, 0 = one period)
+//   W3 TIMING   [15:0] period, [31:16] phase (0 = one period); ms, or records
 //
 // Scheduling (one small block per task, all 8 work in parallel):
 //   * EN rising or a W3 write loads the countdown with phase (or period if
@@ -54,12 +54,18 @@
 //     fires at the (HUB_TIMEOUT+1)-th tick, so the hub waits at least
 //     HUB_TIMEOUT ms (0 = about 1 ms).  HUB_LAST.status then reads 0xFF.
 //   * A matching XFER_RESP with no status byte (length 0) counts as status 4.
+//   * The last value and the last record are shared by all tasks (one task
+//     reads a sensor, another forwards the value with SEND_LAST).
+//   * Only type 1 waits for a reply.  Every other type is sent like DATA;
+//     type 4 (ALARM) always goes out with prio = 1.
 //   * ADDR_INC adds 256 to the address in W1 bytes 1..3 when the task starts
 //     (after the bytes for this run were copied), so the register already
 //     shows the next address while the run is in progress.
 //   * HUB_LAST (status/task) is written by every XFER_REQ run (OK, error or
 //     time-out); DATA runs leave it alone.
 //   * The RECORD packet carries the run's tag and arg = task index.
+//   * seq is 16 bits and simply wraps (0xFFFF -> 0x0000).
+//   * reg_re is not used: no register here changes when it is read.
 //
 // Registers (region 0x600, reg_addr[7:0]):
 //   0x00 HUB_CTRL     [0] EN; W1 [15:8] RUN_NOW (reads back the due flags)
@@ -161,6 +167,12 @@ module hub (
     wire       start_go = (state == S_IDLE) && hub_en && (due_v != 8'd0);
     wire [7:0] start_oh = start_go ? (8'd1 << pick) : 8'd0;
 
+    // ADDR_INC (one adder, shared): W1 bytes 1..3 are a big-endian address
+    // A2 A1 A0; +256 means +1 on A2:A1 (W1[15:8], W1[23:16]).  A0 stays.
+    wire [31:0] pick_w1 = w1_v[32*pick +: 32];
+    wire [15:0] a_next  = {pick_w1[15:8], pick_w1[23:16]} + 16'd1;
+    wire [15:0] w1_mid  = {a_next[7:0], a_next[15:8]};     // new W1[23:8]
+
     // =========================================================================
     // the 8 task slots: configuration words + scheduler (countdown, due flag)
     // =========================================================================
@@ -197,9 +209,6 @@ module hub (
             wire step_due = step && (cd == 16'd1) && !load;
             wire now_due  = we_ctrl && reg_wdata[8+gt] && en;     // RUN_NOW
 
-            // ADDR_INC: bytes 1..3 = big-endian address; +256 = +1 on bytes 1..2
-            wire [15:0] a_next = {w1[15:8], w1[23:16]} + 16'd1;
-
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin
                     cfg <= 29'd0;
@@ -214,7 +223,7 @@ module hub (
                     if (we1)
                         w1 <= reg_wdata;
                     else if (starting && cfg[26])
-                        w1 <= {w1[31:24], a_next[7:0], a_next[15:8], w1[7:0]};
+                        w1[23:8] <= w1_mid;               // ADDR_INC
                     if (we2) w2 <= reg_wdata;
                     if (we3) w3 <= reg_wdata;
 
@@ -418,7 +427,7 @@ module hub (
                 S_IDLE: if (start_go) begin
                     cur_t    <= pick;
                     cur_cfg  <= cfg_v[29*pick +: 29];
-                    cur_w    <= {w2_v[32*pick +: 32], w1_v[32*pick +: 32]};
+                    cur_w    <= {w2_v[32*pick +: 32], pick_w1};
                     t_start  <= time_us;
                     cur_tag  <= {roll, pick};
                     roll     <= roll + 5'd1;
