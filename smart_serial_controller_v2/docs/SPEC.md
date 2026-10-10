@@ -779,6 +779,9 @@ module dma_writer (
 | [23] | PRIO of SM1 |
 
 `NI_STAT[n]` at `0x520 + 4n` (RO): [15:0] packets in, [31:16] packets out.
+The core counts these itself from the head flits on node n's mesh link, so
+they also work for the hub (n = 1) and the DMA writer (n = 2). `NI_CFG[1]` and
+`NI_CFG[2]` do not exist (those nodes have their own CTRL registers).
 
 Timeouts:
 
@@ -796,7 +799,8 @@ Timeouts:
 | 0x10 | APB_COUNT (RO, write clears) | number of APB transfers |
 | 0x14 | IRQ_COUNT (RO, write clears) | rising edges of irq |
 | 0x18 | OLED_PWR | [0] OLED_VDD pin, [1] OLED_VBAT pin (reset 1, 1 = off) |
-| 0x1C | BOARD_IN (RO) | [7:0] switches, [12:8] buttons |
+| 0x1C | BOARD_IN (RO) | [7:0] switches, [12:8] buttons (C, D, L, R, U) |
+| 0x20 | SE_LOOP | [0] SM1 pin 2 listens to SM0 pin 1 (Manchester demo without a wire) |
 
 `irq = v1_irq | |(INT2_STATUS & INT2_ENABLE)`.
 
