@@ -139,6 +139,16 @@ module tb_zed2_standalone;
         $finish;
     end
 
+    // waveforms: run with +vcd (sh sim/run_system.sh standalone vcd).  Only the
+    // testbench level and the DUT ports are dumped, to keep the file small.
+    initial begin
+        if ($test$plusargs("vcd")) begin
+            $dumpfile("build/tb_zed2_standalone.vcd");
+            $dumpvars(1, tb_zed2_standalone);
+            $dumpvars(1, dut);
+        end
+    end
+
     initial begin
         #200_000_000;
         $display("FAIL: watchdog");

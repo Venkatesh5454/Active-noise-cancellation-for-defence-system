@@ -448,6 +448,16 @@ module tb_ssc2_system;
         $finish;
     end
 
+    // waveforms: run with +vcd (sh sim/run_system.sh system vcd).  Only the
+    // testbench level and the DUT ports are dumped, to keep the file small.
+    initial begin
+        if ($test$plusargs("vcd")) begin
+            $dumpfile("build/tb_ssc2_system.vcd");
+            $dumpvars(1, tb_ssc2_system);
+            $dumpvars(1, dut);
+        end
+    end
+
     // watchdog
     initial begin
         #200_000_000;
