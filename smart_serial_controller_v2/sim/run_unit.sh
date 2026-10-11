@@ -60,6 +60,9 @@ run_tb tb_se_programs sim/unit/tb_se_programs.v rtl/se/se_engine.v rtl/se/se_sm.
                    sim/models/tb_uart_term.v sim/models/tb_spi_flash.v sim/models/tb_i2c_slave.v \
                    sim/models/tb_i2c_monitor.v
 
+run_tb tb_study    noc_study/tb_study.v noc_study/rtl/study_bus.v noc_study/rtl/study_xbar.v \
+                   noc_study/rtl/study_mesh.v rtl/noc/noc_mesh.v rtl/noc/noc_router.v
+
 echo
 if [ -n "$FAILED" ]; then
     echo "UNIT TESTS FAILED:$FAILED"
