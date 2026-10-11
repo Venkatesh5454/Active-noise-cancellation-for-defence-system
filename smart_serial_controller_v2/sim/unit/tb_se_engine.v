@@ -27,12 +27,28 @@
 // Ends with "ALL n CHECKS PASSED" or "m OF n CHECKS FAILED".
 // =============================================================================
 `timescale 1ns / 1ps
-// folder with the assembled programs: vivado/run_sim.tcl passes an absolute
-// path, Icarus runs from the project folder
-`ifndef PROG_DIR
-`define PROG_DIR "programs/"
-`endif
 module tb_se_engine;
+    // Folder with the assembled programs: "programs/" when the simulator runs
+    // in the project folder (Icarus, sim/run_*.sh), six levels up when it runs
+    // in Vivado's build/sim/ssc2_sim.sim/sim_1/behav/xsim folder
+    // (vivado/run_sim.tcl).  +define+PROG_DIR="..." overrides both.
+    function [8*64-1:0] prog_dir;
+        input dummy;
+        integer fdp;
+        begin
+`ifdef PROG_DIR
+            prog_dir = `PROG_DIR;
+`else
+            fdp = $fopen("programs/uart_tx.hex", "r");
+            if (fdp != 0) begin
+                $fclose(fdp);
+                prog_dir = "programs/";
+            end else begin
+                prog_dir = "../../../../../../programs/";
+            end
+`endif
+        end
+    endfunction
     reg clk = 1'b0;
     reg rst_n = 1'b0;
     always #5 clk = ~clk;
@@ -1276,7 +1292,7 @@ module tb_se_engine;
         // =================================================================
         $display("J: programs/uart_tx.hex at 115200 baud");
         for (i = 0; i < 32; i = i + 1) hexmem[i] = 16'hxxxx;
-        $readmemh({`PROG_DIR, "uart_tx.hex"}, hexmem, 0, 6);
+        $readmemh({prog_dir(1'b0), "uart_tx.hex"}, hexmem, 0, 6);
         exp_uart[0] = i_pull(1'b1, 5'd0);                // loop: PULL block
         exp_uart[1] = i_set(D_X, 5'd7, 5'd0);            //       SET x, 7
         exp_uart[2] = i_set(D_PINS, 5'd0, 5'd7);         //       SET pins, 0 [7]

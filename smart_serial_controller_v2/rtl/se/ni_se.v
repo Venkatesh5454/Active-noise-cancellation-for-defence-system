@@ -17,6 +17,11 @@
 //                   length, so the bytes are buffered first).  SM0 and SM1
 //                   take turns.
 //
+// A disabled SM never empties its TX FIFO, so bytes for a disabled SM whose
+// FIFO is full are dropped: a packet for a stopped SM can never block the
+// network (software may still preload up to 4 words before enabling it).
+// An ENABLED SM that receives network data must PULL it.
+//
 // Sharing with the CPU: no push or pop in a clock where stall = 1 (an APB
 // transfer is running).  With en = 0 the NI never touches the FIFOs, but it
 // still consumes and drops every packet that arrives, so the network never
@@ -37,6 +42,7 @@ module ni_se (
     input  wire        word4_1,
     input  wire [1:0]  out_shift_left,
     input  wire [1:0]  in_shift_left,
+    input  wire [1:0]  sm_en,             // SM enabled (SE_CTRL), from se_engine
     // serial engine FIFOs
     output wire [1:0]  tx_push,
     output wire [31:0] tx_data0,
@@ -67,7 +73,9 @@ module ni_se (
 
     // the target SM's TX FIFO has room and the CPU is not on the bus
     wire can_push = en && !stall && !tx_full[r_sm];
-    wire r_bready = en ? can_push : 1'b1; // en = 0: drop the bytes
+    // a disabled SM with a full TX FIFO will never take the byte: drop it
+    wire dead     = !sm_en[r_sm] && tx_full[r_sm];
+    wire r_bready = (!en || dead) ? 1'b1 : can_push;   // en = 0: drop the bytes
 
     noc_pkt_rx #(.DEPTH(4)) u_rx (
         .clk(clk), .rst_n(rst_n),
@@ -86,7 +94,7 @@ module ni_se (
         end
     end
 
-    wire push = r_bv && en && can_push;
+    wire push = r_bv && can_push && !dead;
     assign tx_push  = {push & r_sm, push & ~r_sm};
     assign tx_data0 = out_shift_left[0] ? {r_byte, 24'd0} : {24'd0, r_byte};
     assign tx_data1 = out_shift_left[1] ? {r_byte, 24'd0} : {24'd0, r_byte};

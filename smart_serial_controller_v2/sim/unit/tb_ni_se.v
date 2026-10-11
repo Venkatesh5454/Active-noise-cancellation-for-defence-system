@@ -16,6 +16,8 @@
 //   C. a lone word is sent at once (FIFO empty -> flush); 20 words in a
 //      burst make 16 + 4 byte packets.
 //   D. en = 0: packets are drained, the FIFOs are never touched.
+//   E. bytes for a disabled SM whose TX FIFO is full are dropped, so a packet
+//      for a stopped SM cannot block node 0 (and everything behind it).
 // Throughout: stall is random, and no push/pop may happen while stall = 1,
 // no push into a full FIFO and no pop from an empty one.
 // =============================================================================
@@ -44,6 +46,7 @@ module tb_ni_se;
     reg        prio0 = 1'b0, prio1 = 1'b1;
     reg        word4_0 = 1'b0, word4_1 = 1'b0;
     reg  [1:0] osl = 2'b00, isl = 2'b00;      // out / in shift left per SM
+    reg  [1:0] sm_en = 2'b11;                 // SMs enabled
 
     // ---------------- behavioural SM FIFOs ----------------
     wire [1:0]  tx_push, rx_pop;
@@ -64,7 +67,7 @@ module tb_ni_se;
         .clk(clk), .rst_n(rst_n), .stall(stall), .en(en), .my_id(3'd0),
         .dest0(dest0), .dest1(dest1), .prio0(prio0), .prio1(prio1),
         .word4_0(word4_0), .word4_1(word4_1),
-        .out_shift_left(osl), .in_shift_left(isl),
+        .out_shift_left(osl), .in_shift_left(isl), .sm_en(sm_en),
         .tx_push(tx_push), .tx_data0(tx_data0), .tx_data1(tx_data1), .tx_full(tx_full),
         .rx_pop(rx_pop), .rx_data0(rx_data0), .rx_data1(rx_data1), .rx_empty(rx_empty),
         .in_valid(n2d_valid), .in_flit(n2d_flit), .in_credit(n2d_credit),
@@ -328,6 +331,23 @@ module tb_ni_se;
         exp_out0[eo0] = 8'h55; eo0 = eo0 + 1;                   // now it may go
         wait_idle(2000);
         check(go0 == eo0 && out_bad == 0, "D: after en = 1 the waiting byte is sent");
+
+        // ---------------- E: a stopped SM cannot block the network ----------------
+        wait_idle(2000);
+        drain = 1'b0;                     // SM0 stops emptying its TX FIFO ...
+        sm_en = 2'b10;                    // ... because it is disabled
+        repeat (5) @(posedge clk);
+        n = 4 - txn0;                     // free words left in SM0's TX FIFO
+        expect_in(n, 8'h00, 8'h30);       // only these bytes may be pushed
+        send_pkt(3'd0, 6'd10, 8'h00, 8'h30);   // 10 bytes for SM0: the rest are dropped
+        expect_in(3, 8'h01, 8'h50);
+        send_pkt(3'd0, 6'd3, 8'h01, 8'h50);    // the next packet, for SM1, still gets through
+        wait_idle(5000);
+        check(gi0 == ei0 && txn0 == 4, "E: disabled SM0 got 4 words, the other 6 bytes were dropped");
+        check(gi1 == ei1 && in_bad == 0, "E: the following packet for SM1 was delivered");
+        check(inj.cred == 4, "E: nothing is stuck in the network");
+        drain = 1'b1; sm_en = 2'b11;
+        wait_idle(2000);
 
         check(proto_bad == 0, "no push/pop during stall or en=0, none into full/from empty");
         if (errors == 0) $display("ALL %0d CHECKS PASSED", checks);

@@ -21,10 +21,12 @@
 //      and make a record for the DMA writer (slide 18)
 //      hub task 1: every 100 ms send the last value to SM0 (shows on JD2
 //      as two UART bytes when JD is switched to SM0)
-//   6. DMA writer on: records go into the 4 KB block RAM
+//   6. DMA writer on: records go into the 4 KB block RAM (a 256-record ring)
 //   7. loop every 10 ms:  SW2..0 -> JD source (crossbar demo, slide 14)
 //                         SW7    -> UART NI mode (0 FRAME, 1 ADDRESSED)
 //                         LD0..3 <- number of records written / 4
+//                         DMA_RD_IDX <- DMA_WR_IDX: there is no CPU to read
+//                         the records, so the ring is freed as it fills
 // =============================================================================
 `timescale 1ns / 1ps
 module ssc2_boot #(
@@ -89,18 +91,20 @@ module ssc2_boot #(
             6'd20: rom = wr(12'h64C, 32'h0000_0064);     //     every 100 ms
             6'd21: rom = wr(12'h650, 32'h0200_0001);     // T1: EN, SE node, DATA, SEND_LAST
             6'd22: rom = wr(12'h65C, 32'h0032_0064);     //     every 100 ms, 50 ms after T0
-            // 6. DMA writer into the block RAM at 0, then the hub
+            // 6. DMA writer into the block RAM at 0 (256 records = 4 KB), then the hub
             6'd23: rom = wr(12'h704, 32'h0000_0000);     // DMA_BASE
-            6'd24: rom = wr(12'h700, 32'h0000_0001);     // DMA_CTRL: EN
-            6'd25: rom = wr(12'h484, 32'h00F0_F000);     // GPIO_OE: LD0..3 and JD (if JD = GPIO)
-            6'd26: rom = wr(12'h600, 32'h0000_0001);     // HUB_CTRL: EN
+            6'd24: rom = wr(12'h708, 32'h0000_0008);     // DMA_SIZE_LOG2: 256 records
+            6'd25: rom = wr(12'h700, 32'h0000_0001);     // DMA_CTRL: EN
+            6'd26: rom = wr(12'h484, 32'h00F0_F000);     // GPIO_OE: LD0..3 and JD (if JD = GPIO)
+            6'd27: rom = wr(12'h600, 32'h0000_0001);     // HUB_CTRL: EN
             // 7. the endless loop (starts at LOOP)
             6'd36: rom = cp(12'hA1C, 12'h40C, 5'd0, 16'h0007, 5'd0, 32'd0);      // SW2..0 -> PIN_SEL[JD]
             6'd37: rom = cp(12'hA1C, 12'h50C, 5'd7, 16'h0001, 5'd1, 32'h43);     // SW7 -> UART NI mode 1 / 2
             6'd38: rom = cp(12'h71C, 12'h480, 5'd2, 16'h000F, 5'd20, 32'd0);     // COUNT/4 -> LD0..3
-            6'd39: rom = {OP_WAIT, 12'd0, 12'd0, 5'd0, 16'd0, 5'd0, 32'd10};       // 10 ms
-            6'd40: rom = {OP_JMP,  12'd0, 12'd0, 5'd0, 16'd0, 5'd0, {26'd0, LOOP}};
-            // steps 27..35 jump to the loop
+            6'd39: rom = cp(12'h70C, 12'h710, 5'd0, 16'h0FFF, 5'd0, 32'd0);      // WR_IDX -> RD_IDX: free the ring
+            6'd40: rom = {OP_WAIT, 12'd0, 12'd0, 5'd0, 16'd0, 5'd0, 32'd10};       // 10 ms
+            6'd41: rom = {OP_JMP,  12'd0, 12'd0, 5'd0, 16'd0, 5'd0, {26'd0, LOOP}};
+            // steps 28..35 jump to the loop
             default: rom = (i < LOOP) ? {OP_JMP, 12'd0, 12'd0, 5'd0, 16'd0, 5'd0, {26'd0, LOOP}}
                                       : {EW{1'b0}};
         endcase

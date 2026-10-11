@@ -42,8 +42,9 @@ add_files -fileset sim_1 -norecurse $sim_model_files
 add_files -fileset sim_1 -norecurse $tbfile
 set_property top $tb [get_filesets sim_1]
 set_property top_lib xil_defaultlib [get_filesets sim_1]
-# testbenches load the assembled programs from here
-set_property verilog_define [list "PROG_DIR=\"[file join $root programs]/\""] [get_filesets sim_1]
+# The testbenches that load programs/*.hex find the folder by themselves:
+# XSim runs in build/sim/ssc2_sim.sim/sim_1/behav/xsim, six levels below the
+# project folder, so keep the project in build/sim (as created here).
 update_compile_order -fileset sim_1
 
 launch_simulation -simset sim_1 -mode behavioral

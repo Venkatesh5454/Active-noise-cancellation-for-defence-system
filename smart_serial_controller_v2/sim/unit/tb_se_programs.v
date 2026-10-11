@@ -39,12 +39,28 @@
 // Ends with "ALL n CHECKS PASSED" or "m OF n CHECKS FAILED".
 // =============================================================================
 `timescale 1ns / 1ps
-// folder with the assembled programs: vivado/run_sim.tcl passes an absolute
-// path, Icarus runs from the project folder
-`ifndef PROG_DIR
-`define PROG_DIR "programs/"
-`endif
 module tb_se_programs;
+    // Folder with the assembled programs: "programs/" when the simulator runs
+    // in the project folder (Icarus, sim/run_*.sh), six levels up when it runs
+    // in Vivado's build/sim/ssc2_sim.sim/sim_1/behav/xsim folder
+    // (vivado/run_sim.tcl).  +define+PROG_DIR="..." overrides both.
+    function [8*64-1:0] prog_dir;
+        input dummy;
+        integer fdp;
+        begin
+`ifdef PROG_DIR
+            prog_dir = `PROG_DIR;
+`else
+            fdp = $fopen("programs/uart_tx.hex", "r");
+            if (fdp != 0) begin
+                $fclose(fdp);
+                prog_dir = "programs/";
+            end else begin
+                prog_dir = "../../../../../../programs/";
+            end
+`endif
+        end
+    endfunction
     reg clk = 1'b0;
     reg rst_n = 1'b0;
     always #5 clk = ~clk;
@@ -675,9 +691,9 @@ module tb_se_programs;
         // =================================================================
         $display("A: UART 115200 8N1 - uart_tx / uart_rx vs v1 ssc_uart");
         tsel = T_UART;
-        $readmemh({`PROG_DIR, "uart_tx.hex"}, hexmem, 0, UTX_LEN - 1);
+        $readmemh({prog_dir(1'b0), "uart_tx.hex"}, hexmem, 0, UTX_LEN - 1);
         load_prog(UTX_ORG, UTX_LEN);
-        $readmemh({`PROG_DIR, "uart_rx.hex"}, hexmem, 0, URX_LEN - 1);
+        $readmemh({prog_dir(1'b0), "uart_rx.hex"}, hexmem, 0, URX_LEN - 1);
         load_prog(URX_ORG, URX_LEN);
         smcfg(0, UTX_CLK, UTX_PIN, UTX_SH);
         smcfg(1, URX_CLK, URX_PIN, URX_SH);
@@ -777,7 +793,7 @@ module tb_se_programs;
         // =================================================================
         $display("B: SPI mode 0 - spi_master vs v1 ssc_spi, flash READ ID / WREN / RDSR");
         tsel = T_SPI;
-        $readmemh({`PROG_DIR, "spi_master.hex"}, hexmem, 0, SPI_LEN - 1);
+        $readmemh({prog_dir(1'b0), "spi_master.hex"}, hexmem, 0, SPI_LEN - 1);
         load_prog(SPI_ORG, SPI_LEN);
         smcfg(0, SPI_CLK, SPI_PIN, SPI_SH);
         wr(A_CTRL, 32'h100);
@@ -832,7 +848,7 @@ module tb_se_programs;
         // =================================================================
         $display("C: I2C 100 kHz - i2c_master vs v1 ssc_i2c, PmodTMP2 at 0x4B");
         tsel = T_I2C;
-        $readmemh({`PROG_DIR, "i2c_master.hex"}, hexmem, 0, I2C_LEN - 1);
+        $readmemh({prog_dir(1'b0), "i2c_master.hex"}, hexmem, 0, I2C_LEN - 1);
         load_prog(I2C_ORG, I2C_LEN);
         smcfg(0, I2C_CLK, I2C_PIN, I2C_SH);
         wr(A_CTRL, 32'h100);
@@ -927,9 +943,9 @@ module tb_se_programs;
         // =================================================================
         $display("D: Manchester IEEE 802.3 - manchester_tx -> manchester_rx, CRC-16");
         tsel = T_MAN;
-        $readmemh({`PROG_DIR, "manchester_tx.hex"}, hexmem, 0, MTX_LEN - 1);
+        $readmemh({prog_dir(1'b0), "manchester_tx.hex"}, hexmem, 0, MTX_LEN - 1);
         load_prog(MTX_ORG, MTX_LEN);
-        $readmemh({`PROG_DIR, "manchester_rx.hex"}, hexmem, 0, MRX_LEN - 1);
+        $readmemh({prog_dir(1'b0), "manchester_rx.hex"}, hexmem, 0, MRX_LEN - 1);
         load_prog(MRX_ORG, MRX_LEN);
         // D1: 40 random bytes, fast clock (INT 4: 16 ticks = 640 ns per bit)
         smcfg(0, 32'h0004_0000, MTX_PIN, MTX_SH);
@@ -1017,7 +1033,7 @@ module tb_se_programs;
         // =================================================================
         $display("E: OLED SSD1306 write-only SPI - oled_spi on SM1");
         tsel = T_OLED;
-        $readmemh({`PROG_DIR, "oled_spi.hex"}, hexmem, 0, OLD_LEN - 1);
+        $readmemh({prog_dir(1'b0), "oled_spi.hex"}, hexmem, 0, OLD_LEN - 1);
         load_prog(OLD_ORG, OLD_LEN);
         smcfg(1, OLD_CLK, OLD_PIN, OLD_SH);
         wr(A_CTRL, 32'h200);

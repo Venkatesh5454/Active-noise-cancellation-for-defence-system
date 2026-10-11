@@ -24,12 +24,28 @@
 // take milliseconds instead of seconds.  Everything else is real time.
 // =============================================================================
 `timescale 1ns/1ps
-// folder with the assembled serial-engine programs (vivado/run_sim.tcl passes
-// an absolute path; Icarus runs from the project folder)
-`ifndef PROG_DIR
-`define PROG_DIR "programs/"
-`endif
 module tb_ssc2_system;
+    // Folder with the assembled programs: "programs/" when the simulator runs
+    // in the project folder (Icarus, sim/run_*.sh), six levels up when it runs
+    // in Vivado's build/sim/ssc2_sim.sim/sim_1/behav/xsim folder
+    // (vivado/run_sim.tcl).  +define+PROG_DIR="..." overrides both.
+    function [8*64-1:0] prog_dir;
+        input dummy;
+        integer fdp;
+        begin
+`ifdef PROG_DIR
+            prog_dir = `PROG_DIR;
+`else
+            fdp = $fopen("programs/uart_tx.hex", "r");
+            if (fdp != 0) begin
+                $fclose(fdp);
+                prog_dir = "programs/";
+            end else begin
+                prog_dir = "../../../../../../programs/";
+            end
+`endif
+        end
+    endfunction
     reg clk = 1'b0;
     always #5 clk = ~clk;
     reg aresetn = 1'b0;
@@ -235,7 +251,7 @@ module tb_ssc2_system;
         $display("==============================================================");
         // read the assembler's .hex file (one 4-digit word per line)
         prog_len = 0;
-        fd = $fopen({`PROG_DIR, "uart_tx.hex"}, "r");
+        fd = $fopen({prog_dir(1'b0), "uart_tx.hex"}, "r");
         if (fd != 0) begin
             while (!$feof(fd) && prog_len < 32) begin
                 if ($fscanf(fd, "%h\n", prog_uart_tx[prog_len]) == 1) prog_len = prog_len + 1;

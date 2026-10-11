@@ -112,6 +112,10 @@ module tb_zed2_standalone;
         check(rec_word(1, 0) - rec_word(0, 0) >= 4500 && rec_word(1, 0) - rec_word(0, 0) <= 5500,
               "timestamps 100 \"ms\" (5000 us) apart");
 
+        check(dut.u_core.u_dma.cnt_ovf == 0 &&
+              dut.u_core.u_dma.rd_idx >= dut.u_core.u_dma.wr_idx - 1,
+              "ring is freed by the boot loop (RD_IDX follows WR_IDX, no overflow)");
+
         $display("[4] LEDs");
         check(led[0] === 1'b1, "LD0 = record count / 4 bit 0");
 

@@ -362,7 +362,9 @@ module ssc2_core #(
     assign src_oe[7:4]   = spi_slave_mode ? {1'b0,   s_miso_oe,  1'b0,   1'b0}
                                           : {1'b1,   1'b0,       1'b1,   1'b1};
     assign src_in_idle[7:4] = {s_cpol, 1'b1, 1'b0, 1'b1};   // SCK, MISO, MOSI, CS#
-    assign src_idle[1]   = ~s_busy & s_tx_empty & (spi_slave_mode ? src_in[4] : s_cs_n[0]);
+    // slave mode: busy already includes "selected" (CS# through the engine's
+    // synchroniser), so no raw pad reaches the crossbar's switch logic
+    assign src_idle[1]   = ~s_busy & s_tx_empty & (spi_slave_mode | s_cs_n[0]);
     assign spi_cs_hi_n   = s_cs_n[3:1];
 
     // ------------------------------------------------------------------
@@ -430,7 +432,7 @@ module ssc2_core #(
     wire [31:0] se_rdata;
     wire [1:0]  se_tx_push, se_tx_full, se_rx_pop, se_rx_empty;
     wire [31:0] se_tx_data0, se_tx_data1, se_rx_data0, se_rx_data1;
-    wire [1:0]  se_out_left, se_in_left, sm_idle, se_rx_not_empty;
+    wire [1:0]  se_out_left, se_in_left, sm_idle, se_rx_not_empty, sm_enabled;
     wire [3:0]  sm0_out, sm0_oe, sm1_out, sm1_oe;
     // SE_LOOP (0xA20 bit 0): SM1 pin 2 listens to SM0 pin 1 (Manchester demo, no wire)
     wire [3:0]  sm1_in = se_loop ? {src_in[19], sm0_out[1], src_in[17:16]} : src_in[19:16];
@@ -446,7 +448,7 @@ module ssc2_core #(
         .out_shift_left(se_out_left), .in_shift_left(se_in_left),
         .sm0_out(sm0_out), .sm0_oe(sm0_oe), .sm0_in(src_in[15:12]),
         .sm1_out(sm1_out), .sm1_oe(sm1_oe), .sm1_in(sm1_in),
-        .sm_idle(sm_idle), .rx_not_empty(se_rx_not_empty)
+        .sm_idle(sm_idle), .rx_not_empty(se_rx_not_empty), .sm_enabled(sm_enabled)
     );
 
     assign src_out[15:12] = sm0_out;
@@ -493,7 +495,7 @@ module ssc2_core #(
         .dest0(ni_cfg0[6:4]), .dest1(ni_cfg0[22:20]),
         .prio0(ni_cfg0[7]), .prio1(ni_cfg0[23]),
         .word4_0(ni_cfg0[17]), .word4_1(ni_cfg0[18]),
-        .out_shift_left(se_out_left), .in_shift_left(se_in_left),
+        .out_shift_left(se_out_left), .in_shift_left(se_in_left), .sm_en(sm_enabled),
         .tx_push(se_tx_push), .tx_data0(se_tx_data0), .tx_data1(se_tx_data1),
         .tx_full(se_tx_full),
         .rx_pop(se_rx_pop), .rx_data0(se_rx_data0), .rx_data1(se_rx_data1),

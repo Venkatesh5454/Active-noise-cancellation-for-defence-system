@@ -74,7 +74,8 @@ module se_engine (
     output wire [3:0]  sm1_oe,
     input  wire [3:0]  sm1_in,
     output wire [1:0]  sm_idle,        // !enabled, or stalled on PULL block with TX empty
-    output wire [1:0]  rx_not_empty
+    output wire [1:0]  rx_not_empty,
+    output wire [1:0]  sm_enabled      // SE_CTRL enable bits (for ni_se)
 );
     // ---------------- address decode ----------------
     wire [3:0] k       = reg_addr[5:2];             // word inside a 0x40 block
@@ -265,6 +266,7 @@ module se_engine (
     assign ni_rx_data0    = rd_rxf[31:0];       // front of the RX FIFO, 0 when empty
     assign ni_rx_data1    = rd_rxf[63:32];
     assign rx_not_empty   = ~rx_empty_w;
+    assign sm_enabled     = sm_en;
     assign out_shift_left = outl_w;
     assign in_shift_left  = inl_w;
 
