@@ -39,6 +39,20 @@ run_tb tb_ni_uart  sim/unit/tb_ni_uart.v rtl/noc/ni_uart.v rtl/noc/noc_pkt_tx.v 
                    rtl/top/ssc2_timebase.v rtl/v1/ssc_uart.v rtl/v1/ssc_fifo.v rtl/v1/ssc_baud_gen.v \
                    rtl/v1/ssc_sync_filter.v sim/models/tb_uart_term.v
 
+run_tb tb_noc_router sim/unit/tb_noc_router.v rtl/noc/noc_router.v
+run_tb tb_noc_mesh sim/unit/tb_noc_mesh.v rtl/noc/noc_mesh.v rtl/noc/noc_router.v \
+                   rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v
+run_tb tb_se_engine sim/unit/tb_se_engine.v rtl/se/se_engine.v rtl/se/se_sm.v rtl/v1/ssc_fifo.v
+run_tb tb_hub      sim/unit/tb_hub.v rtl/hub/hub.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v \
+                   rtl/top/ssc2_timebase.v
+run_tb tb_ni_spi   sim/unit/tb_ni_spi.v rtl/noc/ni_spi.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v \
+                   rtl/top/ssc2_timebase.v rtl/v1/ssc_spi.v rtl/v1/ssc_fifo.v \
+                   rtl/v1/ssc_sync_filter.v sim/models/tb_spi_flash.v sim/models/tb_spi_slave.v
+run_tb tb_ni_i2c   sim/unit/tb_ni_i2c.v rtl/noc/ni_i2c.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v \
+                   rtl/top/ssc2_timebase.v rtl/v1/ssc_i2c.v rtl/v1/ssc_fifo.v \
+                   rtl/v1/ssc_sync_filter.v sim/models/tb_i2c_slave.v sim/models/tb_i2c_monitor.v \
+                   sim/models/tb_i2c_master.v
+
 echo
 if [ -n "$FAILED" ]; then
     echo "UNIT TESTS FAILED:$FAILED"

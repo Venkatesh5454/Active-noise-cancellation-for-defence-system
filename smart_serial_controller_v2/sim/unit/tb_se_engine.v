@@ -27,6 +27,11 @@
 // Ends with "ALL n CHECKS PASSED" or "m OF n CHECKS FAILED".
 // =============================================================================
 `timescale 1ns / 1ps
+// folder with the assembled programs: vivado/run_sim.tcl passes an absolute
+// path, Icarus runs from the project folder
+`ifndef PROG_DIR
+`define PROG_DIR "programs/"
+`endif
 module tb_se_engine;
     reg clk = 1'b0;
     reg rst_n = 1'b0;
@@ -558,6 +563,14 @@ module tb_se_engine;
         clks(3);
         exw(0, i_jmp(C_PIN, 5'd13, 5'd0));
         rchkm(SA(0, O_STATE), 32'h1F, 32'd13, "JMP pin taken (pin 2 = 1)");
+        wr(SA(0, O_PINCTRL), pinctrl_f(0, 0, 0, 0, 0, 0, 2'd3, 0, 0, 0));   // JMP_PIN = 3
+        exw(0, i_jmp(C_PIN, 5'd20, 5'd0));
+        rchkm(SA(0, O_STATE), 32'h1F, 32'd13, "JMP pin not taken (JMP_PIN 3, pin 3 = 0)");
+        sm0_in = 4'b1000;
+        clks(3);
+        exw(0, i_jmp(C_PIN, 5'd14, 5'd0));
+        rchkm(SA(0, O_STATE), 32'h1F, 32'd14, "JMP pin taken (JMP_PIN 3, pin 3 = 1)");
+        exw(0, i_jmp(C_ALW, 5'd13, 5'd0));
         wr(SA(0, O_TXF), 32'h0000_00FF);
         exw(0, i_pull(1'b1, 5'd0));
         exw(0, i_jmp(C_NOSRE, 5'd14, 5'd0));
@@ -568,6 +581,11 @@ module tb_se_engine;
         exw(0, i_out(D_NULL, 6'd20, 5'd0));            // 36 -> saturates at 32
         exw(0, i_jmp(C_NOSRE, 5'd16, 5'd0));
         rchkm(SA(0, O_STATE), 32'h1F, 32'd15, "JMP !osre not taken (count saturated at 32)");
+        exw(0, i_pull(1'b0, 5'd0));
+        exw(0, i_out(D_NULL, 6'd32, 5'd0));
+        exw(0, i_out(D_NULL, 6'd32, 5'd0));            // 64 -> still 32
+        exw(0, i_jmp(C_NOSRE, 5'd17, 5'd0));
+        rchkm(SA(0, O_STATE), 32'h1F, 32'd15, "JMP !osre not taken after 32 + 32 bits");
         exw(0, i_pull(1'b0, 5'd0));                     // noblock pull resets the count too
         exw(0, i_out(D_NULL, 6'd31, 5'd0));
         exw(0, i_jmp(C_NOSRE, 5'd18, 5'd0));
@@ -700,6 +718,11 @@ module tb_se_engine;
         exw(0, i_push(1'b1, 5'd0));
         rchk(SA(0, O_RXF), 32'h8000_0000, "IN pins, 3 (right) = ISR[31:29]");
         rchk(SA(0, O_PINS), 32'h0000_0006, "PINS[3:0] shows the synchronised inputs");
+        sm1_in = 4'b1001;
+        clks(3);
+        rchk(SA(1, O_PINS), 32'h0000_0009, "SM1 PINS[3:0] shows sm1_in");
+        rchk(SA(0, O_PINS), 32'h0000_0006, "SM0 PINS[3:0] not affected by sm1_in");
+        sm1_in = 4'hF;
         // OUT isr / OUT pc / OUT y
         wr(SA(0, O_TXF), 32'h89AB_CDF3);
         exw(0, i_pull(1'b1, 5'd0));
@@ -730,6 +753,9 @@ module tb_se_engine;
         rchkm(SA(0, O_PINS), 32'hFF0, 32'h030, "SET pins, 0110 (count 0 = 4, base 3)");
         exw(0, i_set(D_PINDIRS, 5'b01001, 5'd0));
         rchkm(SA(0, O_PINS), 32'hFF0, 32'hC30, "SET pindirs, 1001 (base 3) -> oe = 1100");
+        wr(SA(0, O_PINCTRL), pinctrl_f(0, 2'd1, 3'd7, 0, 0, 0, 0, 0, 0, 0));  // count 7 = 4
+        exw(0, i_set(D_PINS, 5'b00110, 5'd0));          // pins 1,2,3,0 = 0,1,1,0
+        rchkm(SA(0, O_PINS), 32'hFF0, 32'hCC0, "SET_COUNT 7 acts as 4 (base 1, wraps)");
         // OUT pins: OUT_BASE 1, 8 bits -> only bits 3:0 reach pins 1,2,3,0
         wr(SA(0, O_PINCTRL), pinctrl_f(2'd1, 0, 0, 0, 0, 0, 0, 0, 0, 0));
         wr(SA(0, O_SHIFT), 32'h0);
@@ -746,6 +772,8 @@ module tb_se_engine;
         wr(SA(0, O_PINCTRL), pinctrl_f(0, 0, 3'd0, 0, 0, 0, 0, 4'b0100, 4'hF, 4'h0));
         wr(A_CTRL, 32'h100);
         rchkm(SA(0, O_PINS), 32'hFF0, 32'h0F0, "RESTART: out = INIT_OUT, oe = INIT_OE");
+        exw(0, i_set(D_PINS, 5'b1110, 5'd0));
+        rchkm(SA(0, O_PINS), 32'hFF0, 32'h0E0, "SET pins 1 on OD pin 2: oe = 0, out kept (1)");
         exw(0, i_set(D_PINS, 5'b0000, 5'd0));
         rchkm(SA(0, O_PINS), 32'hFF0, 32'h400, "SET pins 0: OD pin 2 pulls low (oe=1,out=0)");
         exw(0, i_set(D_PINS, 5'b1111, 5'd0));
@@ -1248,7 +1276,7 @@ module tb_se_engine;
         // =================================================================
         $display("J: programs/uart_tx.hex at 115200 baud");
         for (i = 0; i < 32; i = i + 1) hexmem[i] = 16'hxxxx;
-        $readmemh("programs/uart_tx.hex", hexmem, 0, 6);
+        $readmemh({`PROG_DIR, "uart_tx.hex"}, hexmem, 0, 6);
         exp_uart[0] = i_pull(1'b1, 5'd0);                // loop: PULL block
         exp_uart[1] = i_set(D_X, 5'd7, 5'd0);            //       SET x, 7
         exp_uart[2] = i_set(D_PINS, 5'd0, 5'd7);         //       SET pins, 0 [7]
