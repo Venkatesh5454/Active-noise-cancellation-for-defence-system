@@ -651,7 +651,8 @@ module se_engine (
     output [3:0] sm0_out, sm0_oe, input [3:0] sm0_in,
     output [3:0] sm1_out, sm1_oe, input [3:0] sm1_in,
     output [1:0] sm_idle,
-    output [1:0] rx_not_empty);
+    output [1:0] rx_not_empty,
+    output [1:0] sm_enabled);
 ```
 
 | port | dir | meaning |
@@ -669,6 +670,7 @@ module se_engine (
 | `sm0_in`, `sm1_in` | in | pin inputs from the crossbar (synchronised inside) |
 | `sm_idle[s]` | out | SM s is off, or stalled on `PULL block` with its TX FIFO empty. The crossbar only switches a port away from an SM while this is 1. |
 | `rx_not_empty[s]` | out | RX FIFO s has data (INT2 bits 6 and 7, level) |
+| `sm_enabled[s]` | out | SE_CTRL enable bit of SM s; `ni_se` drops bytes for a disabled SM whose TX FIFO is full |
 
 **Sharing the FIFOs with the network.** The CPU (`SMs_TXF`, `SMs_RXF`) and
 the NI share each FIFO; the push and pop strobes are OR-ed. If both push in

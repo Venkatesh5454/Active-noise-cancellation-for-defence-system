@@ -6,7 +6,7 @@ you never have to judge a waveform by eye to know whether the design works.
 | level | what | tool | time | pass looks like |
 |---|---|---|---|---|
 | 1 | each block on its own (13 unit testbenches) | Icarus or Vivado XSim | ~3 min | `ALL n CHECKS PASSED` for every test |
-| 2 | the whole controller as the ARM sees it, and the whole FPGA-only board image | Icarus or XSim | ~10 min | `ALL 36 CHECKS PASSED`, `ALL 7 CHECKS PASSED` |
+| 2 | the whole controller as the ARM sees it, and the whole FPGA-only board image | Icarus or XSim | ~10 min | `ALL 36 CHECKS PASSED`, `ALL 8 CHECKS PASSED` |
 | 3 | waveforms, when you want to see *why* | GTKWave or the Vivado wave window | - | the pictures described in section 4 |
 | 4 | the real ZedBoard | Vivado + Vitis + PC + logic analyser | 1-2 h | the results in sections 5 and 6 |
 
@@ -60,7 +60,7 @@ What each unit test proves, and its last lines when everything is right:
 | `tb_xbar` | pin crossbar | a cycle-accurate reference model checked every clock against random traffic and random switch requests; never switches mid-frame; FLOAT exactly 1 clock; SW_CYCLES/SW_EDGE | `COVERAGE: ...` / `ALL 1217806 CHECKS PASSED` |
 | `tb_se_engine` | serial engine | every instruction and JMP condition, shifts both ways, PUSH/PULL, side-set, delays, OD, CRC ("123456789" -> 0x29B1), fractional divider, EXEC, RESTART, and the slide-13 program at 115200 baud | `measured bit time 8680.0 ns (ideal 8680.6)` / `ALL 257 CHECKS PASSED` |
 | `tb_se_programs` | the programs | UART, SPI and I2C programs against the v1 engines bit for bit, Manchester loop with CRC, OLED timing | `CRC-16 over the received bits: SE 6dfd, model 6dfd` / `ALL 69 CHECKS PASSED` |
-| `tb_ni_se` | serial-engine NI | bytes to the right SM and bit position, RX words to packets, flush rules, stall | `ALL 16 CHECKS PASSED` |
+| `tb_ni_se` | serial-engine NI | bytes to the right SM and bit position, RX words to packets, flush rules, stall, a stopped SM cannot block the network | `ALL 19 CHECKS PASSED` |
 | `tb_ni_uart` | UART NI | slide-17 frame `01 9F 03` -> request; reply -> PC gets `20 BA 19`; RAW, ADDRESSED, time-outs, back-pressure, stall | `ALL 65 CHECKS PASSED` |
 | `tb_ni_spi` | SPI NI | flash READ ID through the real v1 SPI engine, one CS# window, long reads, bad requests (status 4) | `ALL 50 CHECKS PASSED` |
 | `tb_ni_i2c` | I2C NI | TMP2 read through the real v1 I2C engine (repeated START), NACK (status 1), time-out (status 3), wlen > 16 (status 4) | `ALL 77 CHECKS PASSED` |
@@ -142,10 +142,11 @@ interrupts per reading).
 [2] PC reads the flash ID        ok  PC got 20 BA 19
 [3] hub records in the block RAM ok  4 records: source 3, len 2, seq 1..4, data 0C 80
                                  ok  timestamps 100 "ms" (5000 us) apart
+                                 ok  ring is freed by the boot loop (RD_IDX follows WR_IDX, no overflow)
 [4] LEDs                         ok  LD0 = record count / 4 bit 0
 [5] SW = 4: JD driven by SM0     ok  JD2 shows the temperature bytes 0C 80 as UART frames
 [6] SW7 = 1: ADDRESSED frame     ok  PC got the temperature 0C 80
-ALL 7 CHECKS PASSED
+ALL 8 CHECKS PASSED
 ```
 
 ---

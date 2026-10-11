@@ -30,6 +30,12 @@ The byte goes in bits [7:0], or in [31:24] when that SM's OUT shifts left,
 so an LSB-first program (`uart_tx`) and an MSB-first program (`spi_master`)
 both get the byte where they shift it out from.
 
+**Stopped state machines.** A byte for a *disabled* SM whose TX FIFO is
+full is dropped: that SM will never empty its FIFO, and waiting would block
+node 0 and every packet behind it (the hub would freeze). Software can
+still preload up to 4 words before enabling an SM. An *enabled* SM that
+receives network data must PULL it.
+
 **State machine to network.** Words from an SM's RX FIFO are collected in a
 16-byte buffer:
 
@@ -88,9 +94,10 @@ models of the engine's 4-word FIFOs, so every push and pop is checked:
 | B | random RX words on both SMs, IN shift right/left, 1 or 4 bytes per word: each SM's byte stream arrives unchanged and in order, in DATA packets with the right dest/prio, arg = SM, source = 0, 1..16 bytes |
 | C | a lone word is sent at once (1-byte packet); 20 queued words make packets of 16 and 4 bytes |
 | D | EN = 0: nothing pushed or popped, every packet drained; after EN = 1 the waiting word is sent |
+| E | a 10-byte packet for a disabled SM with a full FIFO: 4 words pushed, 6 bytes dropped, and the next packet (for the other SM) still arrives |
 | all | random `stall`: no push/pop while stall = 1 or EN = 0, no push into a full FIFO, no pop from an empty one |
 
-Expected end of the log: `ALL 16 CHECKS PASSED`. The system testbench also
+Expected end of the log: `ALL 19 CHECKS PASSED`. The system testbench also
 uses `ni_se` end to end: the PC's "Hi!" travels UART -> network -> SM0 and
 comes out of the `uart_tx` program on JD (`tb_ssc2_system`, test [6]), and
 in the FPGA-only image the hub sends the last temperature to SM0 every

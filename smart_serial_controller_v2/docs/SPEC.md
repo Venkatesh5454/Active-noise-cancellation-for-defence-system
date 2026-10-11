@@ -492,7 +492,8 @@ module se_engine (
     output [3:0] sm0_out, sm0_oe, input [3:0] sm0_in,
     output [3:0] sm1_out, sm1_oe, input [3:0] sm1_in,
     output [1:0] sm_idle,        // !enabled, or stalled on a blocking PULL with the TX FIFO empty
-    output [1:0] rx_not_empty);
+    output [1:0] rx_not_empty,
+    output [1:0] sm_enabled);    // SE_CTRL enable bits (added for ni_se)
 ```
 
 ### 5.5 Assembler: `tools/se_asm.py`
@@ -524,6 +525,7 @@ module ni_se (
     input clk, rst_n, input stall, input en, input [2:0] my_id,
     input [2:0] dest0, dest1, input prio0, prio1, input word4_0, word4_1,
     input [1:0] out_shift_left, in_shift_left,
+    input [1:0] sm_en,                       // from se_engine.sm_enabled
     output [1:0] tx_push, output [31:0] tx_data0, tx_data1, input [1:0] tx_full,
     output [1:0] rx_pop, input [31:0] rx_data0, rx_data1, input [1:0] rx_empty,
     input in_valid, input [33:0] in_flit, output in_credit,
@@ -533,7 +535,9 @@ module ni_se (
 
 - **Network to SM:** every payload byte of an incoming packet (any type)
   becomes one word in the TX FIFO of SM `arg[0]`. The byte goes in [7:0],
-  or in [31:24] when that SM shifts OUT to the left.
+  or in [31:24] when that SM shifts OUT to the left. A byte for a disabled
+  SM whose TX FIFO is full is dropped, so a packet for a stopped SM can
+  never block the network.
 - **SM to network:**
   - RX words become DATA packets to destX/prioX, with `arg` = SM index.
   - Each word gives 1 byte, or 4 bytes (little-endian) if `word4`. The one
