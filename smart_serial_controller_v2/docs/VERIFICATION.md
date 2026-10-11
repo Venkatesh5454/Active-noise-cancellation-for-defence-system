@@ -5,7 +5,7 @@ you never have to judge a waveform by eye to know whether the design works.
 
 | level | what | tool | time | pass looks like |
 |---|---|---|---|---|
-| 1 | each block on its own (14 unit testbenches) | Icarus or Vivado XSim | ~3 min | `ALL n CHECKS PASSED` for every test |
+| 1 | each block on its own (13 unit testbenches) | Icarus or Vivado XSim | ~3 min | `ALL n CHECKS PASSED` for every test |
 | 2 | the whole controller as the ARM sees it, and the whole FPGA-only board image | Icarus or XSim | ~10 min | `ALL 36 CHECKS PASSED`, `ALL 7 CHECKS PASSED` |
 | 3 | waveforms, when you want to see *why* | GTKWave or the Vivado wave window | - | the pictures described in section 4 |
 | 4 | the real ZedBoard | Vivado + Vitis + PC + logic analyser | 1-2 h | the results in sections 5 and 6 |
@@ -47,7 +47,7 @@ ALL n CHECKS PASSED
 m OF n CHECKS FAILED        (and a "FAIL: ..." line for each failure)
 ```
 
-`run_unit.sh` finishes with `UNIT TESTS: 14 passed`, or lists the tests that
+`run_unit.sh` finishes with `UNIT TESTS: 13 passed`, or lists the tests that
 failed. The full log of each test is in `build/<test>.log`.
 
 What each unit test proves, and its last lines when everything is right:
