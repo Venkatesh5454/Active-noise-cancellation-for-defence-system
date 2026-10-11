@@ -19,6 +19,7 @@
  * ===========================================================================*/
 #include <string.h>
 #include <stdlib.h>
+#include "xil_types.h"
 #include "xil_printf.h"
 #include "ssc2_driver.h"
 #include "se_demos.h"
