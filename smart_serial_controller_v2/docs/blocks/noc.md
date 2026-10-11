@@ -41,9 +41,10 @@ The NoC has four pieces:
 | `noc_pkt_tx.v` | packet sender: turns "header + bytes" into flits for the network |
 | `noc_pkt_rx.v` | packet receiver: turns flits back into "header + bytes" |
 
-Every node module (the NIs, the hub, the DMA writer) uses one
-`noc_pkt_tx` and one `noc_pkt_rx`. So the flit format lives in one place,
-and no node has to know about flits or credits.
+Every node module (the NIs and the hub) uses one `noc_pkt_tx` and one
+`noc_pkt_rx`. The DMA writer only receives, so it has only a `noc_pkt_rx`.
+So the flit format lives in one place, and no node has to know about flits
+or credits.
 
 **Why a network and not a bus?** On a shared bus only one transfer can
 happen at a time. In the mesh, the SPI reply to the UART (4 → 3) and the
@@ -425,7 +426,7 @@ is the credit pulse going back on that link.
 ```
 clk  | start st | node5->R5 link   cr  | R5->R4 cr | R4->R1 cr | R1->node1 link   cr  | hv bv byte
    7 |  1    0  |  0                0  |  0   0   |  0   0   |  0                0  | 0  0
-   8 |  1    1  |  0                0  |  0   0   |  0   0   |  0                0  | 0  0
+   8 |  0    1  |  0                0  |  0   0   |  0   0   |  0                0  | 0  0
    9 |  0    2  |  1 0_4683214B     0  |  0   0   |  0   0   |  0                0  | 0  0
   10 |  0    2  |  0                0  |  0   0   |  0   0   |  0                0  | 0  0
   11 |  0    2  |  0                1  |  1   0   |  0   0   |  0                0  | 0  0
@@ -559,9 +560,9 @@ Other numbers from the tests:
    `noc_pkt_rx`).
 7. **A flit that arrives at a full FIFO is ignored.** This can only happen
    if a sender ignores its credits. Correct senders (all of ours) never do.
-8. **A dest of W*H or more goes LOCAL** (SPEC). With 3-bit ids, dest 6 and 7
-   are delivered to the router where they entered. The node there consumes
-   them (every NI must consume every packet).
+8. **A dest of W*H or more goes LOCAL** (SPEC). With 3-bit ids, a packet
+   for dest 6 or 7 is sent straight back to the node that sent it (its own
+   router delivers it LOCAL). That node consumes it like any other packet.
 9. **No deadlock.** XY routing never turns from y back to x, so no cycle of
    links can wait on itself. This only holds if every node keeps consuming
    its packets, which is why every NI must drain packets even with `en = 0`.

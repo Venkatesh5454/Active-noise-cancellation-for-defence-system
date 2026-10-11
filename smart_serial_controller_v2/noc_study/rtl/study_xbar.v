@@ -97,15 +97,14 @@ module study_xbar #(
         end
     endfunction
 
-
     // ------------------------------------------------------------------
     // Signals shared between the input side and the output side
     // ------------------------------------------------------------------
     wire [N-1:0]    f_ne;        // input FIFO p is not empty
-    wire [FW-1:0]   f_front [0:N-1];  // flit at the front of FIFO p
+    wire [FW-1:0]   f_front [0:N-1]; // flit at the front of FIFO p
     wire [N-1:0]    f_head;      // that flit is a HEAD or a SINGLE
     wire [N-1:0]    f_prio;      // its prio bit
-    wire [IW-1:0]   f_route [0:N-1];  // the output its dest wants
+    wire [IW-1:0]   f_route [0:N-1]; // the output its dest wants
     wire [N-1:0]    f_busy;      // input p is in the middle of a packet
     wire [N-1:0]    o_go;        // output o sends a flit this clock
     wire [N*IW-1:0] o_sel;       // ... taken from this input

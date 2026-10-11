@@ -1,0 +1,55 @@
+; se_asm.py listing of programs/manchester_rx.se
+; program manchester_rx, origin 20, 12 words, side_set 0
+;
+; addr = word index in the program memory (decimal), code = hex
+;
+; addr code  line  source
+               1  // =============================================================================
+               2  // manchester_rx.se  -  Manchester (IEEE 802.3) receiver with CRC-16
+               3  // -----------------------------------------------------------------------------
+               4  // The partner of manchester_tx.se (same tick rate: 16 ticks per bit).
+               5  // IEEE 802.3: bit 1 = low -> high in the middle, bit 0 = high -> low.
+               6  //
+               7  // How it works (clock recovery from the data):
+               8  //   1. Wait for the line to be low (idle), then for it to go high: that is
+               9  //      the middle edge of the start bit.  We are now locked.
+              10  //   2. 12 ticks (3/4 of a bit) after a middle edge we are in the first half
+              11  //      of the next bit, past any edge at the bit boundary.  JMP pin looks
+              12  //      at the line: high -> the middle edge will fall, low -> it will rise.
+              13  //   3. WAIT for that middle edge.  Its time re-locks us (so the two clocks
+              14  //      may differ by several percent), and the level after it IS the bit
+              15  //      value: IN pins, 1 samples it 2 ticks later.  Both paths take the
+              16  //      same time (JMP got / the delay after WAIT 0).
+              17  //   4. After 8 bits: CRC 8 feeds the byte into the CRC-16 register (wire
+              18  //      order, LSB first), then PUSH.  Back to step 1, which also waits for
+              19  //      the idle line between frames.
+              20  //
+              21  //   RX word: the byte in bits [31:24] (IN shifts right, LSB first), [23:0] = 0.
+              22  //   CRC: SMs_CRC = CRC-16 (SE_CRC_CFG POLY, INIT; reset 0x1021 / 0xFFFF)
+              23  //   over all bits received since the last "CRC reset" (EXEC 0xE080), in
+              24  //   wire order.  Software compares it with the CRC of the bytes it sent.
+              25  //   PUSH noblock: a full RX FIFO drops the byte (RX overflow flag) but the
+              26  //   receiver keeps its lock.
+              27  //
+              28  //   clock: same as manchester_tx: 62 + 128/256 -> 1.6 MHz ticks, 100 kbit/s
+              29  //   pins : RX = pin 2: IN_BASE 2, JMP_PIN 2, no outputs  -> PINCTRL 0x00004200
+              30  //   shift: IN right, START_PC = 20                      -> SHIFTCTRL 0x00001400
+              31  // =============================================================================
+              32  .program   manchester_rx
+              33  .origin    20
+              34  .clkdiv    62 128
+              35  .pinctrl   0x00004200
+              36  .shiftctrl 0x00001400
+              37  
+  20   2002   38  start:  WAIT 0, pin 2           // idle: the line must be low first
+  21   2082   39          WAIT 1, pin 2           // middle edge of the start bit: locked
+  22   a927   40          SET  x, 7       [9]     // 8 data bits; go to 3/4 of the bit
+  23   00da   41  bit:    JMP  pin, fall          // first half high -> the middle edge falls
+  24   2082   42          WAIT 1, pin 2           // first half low  -> wait for the rising edge
+  25   001b   43          JMP  got
+  26   2102   44  fall:   WAIT 0, pin 2   [1]     // wait for the falling edge (+1: same time as JMP got)
+  27   4701   45  got:    IN   pins, 1    [7]     // the level after the middle edge = the bit
+  28   0057   46          JMP  x--, bit           // ... and on to 3/4 of the next bit
+  29   e008   47          CRC  8                  // the byte (8 newest ISR bits) -> CRC-16
+  30   8000   48          PUSH noblock            // byte in [31:24] -> RX FIFO
+  31   0014   49          JMP  start

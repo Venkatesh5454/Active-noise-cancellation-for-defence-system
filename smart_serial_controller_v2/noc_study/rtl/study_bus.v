@@ -102,7 +102,6 @@ module study_bus #(
         end
     endfunction
 
-
     // ------------------------------------------------------------------
     // Bus state
     // ------------------------------------------------------------------
@@ -115,10 +114,10 @@ module study_bus #(
     reg  [IW-1:0] bdest;
 
     wire [N-1:0]    f_ne;            // input FIFO p is not empty
-    wire [FW-1:0]   f_front [0:N-1];  // flit at the front of FIFO p
+    wire [FW-1:0]   f_front [0:N-1]; // flit at the front of FIFO p
     wire [N-1:0]    f_head;          // that flit is a HEAD or a SINGLE
     wire [N-1:0]    f_prio;          // its prio bit
-    wire [IW-1:0]   f_route [0:N-1];  // the node its dest wants
+    wire [IW-1:0]   f_route [0:N-1]; // the node its dest wants
     wire [N-1:0]    cred_ok;         // receiver d has a free buffer slot
     wire [N-1:0]    req;             // node p asks for the bus
 

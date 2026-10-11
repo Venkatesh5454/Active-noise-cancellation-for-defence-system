@@ -8,24 +8,35 @@
 //
 // Parameters (iverilog -P tb_study.FABRIC=2 -P tb_study.N=16 ...):
 //   FABRIC  0 bus, 1 crossbar, 2 mesh, 3 all three side by side (default)
-//   N       number of nodes, 2 .. 16 (default 4)
+//   N       number of nodes, 2 .. 16 (default 4; the mesh needs W*H = N,
+//           see study_mesh.v)
+//   QCAP    source queue size in packets per node (default 64)
+//   SEED    random seed (default 7)
 //
 // Run modes (vvp plusargs):
-//   (none)        quick sanity run (the unit test): rate 0.1 with ideal
-//                 sinks, then rate 1.0 with 20 % urgent packets and sinks
-//                 that stall 30 % of the time
+//   (none)        quick sanity run (the unit test, N = 4, all three
+//                 fabrics): rate 0.1 with ideal sinks, then rate 1.0 with
+//                 20 % urgent packets and sinks that stall 30 % of the time;
+//                 warm-up 500 clocks, window 2000 clocks
 //   +sweep        the study: rates 0.02 0.05 0.1 0.2 0.3 0.5 0.7 1.0
 //   +rate=R       one rate, R in flits/node/clock x 1000 (e.g. +rate=100)
-//   +warm=C +win=C +seed=S   warm-up clocks, measurement window, seed
+//   +warm=C +win=C +drain=C +seed=S   override warm-up, window, drain
+//                 limit and seed.  For +sweep/+rate the window is
+//                 16000/N clocks (4000 at N = 4, 1000 at N = 16), so every N
+//                 gets about the same number of packets, and the warm-up is
+//                 a quarter of it (at least 300 clocks).
 //
 // Traffic (the study_traffic module below, one per fabric):
 //   * Each clock every node makes a new packet with probability rate/4
 //     (packets are 1 HEAD + 2 BODY + 1 TAIL = 4 flits), so the offered load
 //     is "rate" flits per node per clock.  The destination is uniform random
-//     among the other N-1 nodes.
+//     among the other N-1 nodes.  Each rate restarts the random numbers
+//     from the same seed, so every fabric gets exactly the same packets.
 //   * New packets wait in a source queue (up to QCAP packets per node), so
 //     a busy network cannot lower the offered load.  The source sends the
 //     front flit whenever it has a credit (one flit per clock at most).
+//     A packet made while the queue is full is counted as offered but
+//     refused; that only happens when the fabric is saturated.
 //   * Every node has a DEPTH-flit receive buffer (modelled as a counter): it
 //     takes one flit per clock (or with probability sink_pct) and returns a
 //     credit for each.
@@ -40,7 +51,10 @@
 //   until every tagged packet has arrived -> stop making packets and wait
 //   until the fabric is empty again.
 //   latency  = clock the TAIL arrives - clock the packet was made (this
-//              includes the time in the source queue)
+//              includes the time in the source queue).  With no other
+//              traffic it is 6 clocks through the bus or the crossbar
+//              (1 to send the head, 2 through the fabric, 3 more flits)
+//              and 6 + 2*hops through the mesh.
 //   net lat. = clock the TAIL arrives - clock the HEAD left the source
 //   accepted = flits that arrived in the window / (N * WIN)
 //   sat = 1  = the fabric could not keep up (source queue full, accepted
@@ -327,6 +341,7 @@ module tb_study;
     parameter FABRIC = 3;            // 0 bus, 1 crossbar, 2 mesh, 3 all three
     parameter N      = 4;            // nodes: 2 .. 16 (mesh: 2, 4, 6, 8, 12, 16)
     parameter SEED   = 7;
+    parameter QCAP   = 64;           // source queue, packets per node
     localparam DEPTH = 4;
     localparam PKT   = 4;
     localparam SW    = 16 * 32;      // width of one stats bus
@@ -362,7 +377,7 @@ module tb_study;
                 .clk(clk), .rst_n(rst_n),
                 .tx_valid(tv), .tx_flit(tf), .tx_credit(tc),
                 .rx_valid(rv), .rx_flit(rf), .rx_credit(rc));
-            study_traffic #(.N(N), .DEPTH(DEPTH), .PKT(PKT)) u_trf (
+            study_traffic #(.N(N), .DEPTH(DEPTH), .PKT(PKT), .QCAP(QCAP)) u_trf (
                 .clk(clk), .rst_n(rst_n),
                 .tx_valid(tv), .tx_flit(tf), .tx_credit(tc),
                 .rx_valid(rv), .rx_flit(rf), .rx_credit(rc),
@@ -380,7 +395,7 @@ module tb_study;
                 .clk(clk), .rst_n(rst_n),
                 .tx_valid(tv), .tx_flit(tf), .tx_credit(tc),
                 .rx_valid(rv), .rx_flit(rf), .rx_credit(rc));
-            study_traffic #(.N(N), .DEPTH(DEPTH), .PKT(PKT)) u_trf (
+            study_traffic #(.N(N), .DEPTH(DEPTH), .PKT(PKT), .QCAP(QCAP)) u_trf (
                 .clk(clk), .rst_n(rst_n),
                 .tx_valid(tv), .tx_flit(tf), .tx_credit(tc),
                 .rx_valid(rv), .rx_flit(rf), .rx_credit(rc),
@@ -398,7 +413,7 @@ module tb_study;
                 .clk(clk), .rst_n(rst_n),
                 .tx_valid(tv), .tx_flit(tf), .tx_credit(tc),
                 .rx_valid(rv), .rx_flit(rf), .rx_credit(rc));
-            study_traffic #(.N(N), .DEPTH(DEPTH), .PKT(PKT)) u_trf (
+            study_traffic #(.N(N), .DEPTH(DEPTH), .PKT(PKT), .QCAP(QCAP)) u_trf (
                 .clk(clk), .rst_n(rst_n),
                 .tx_valid(tv), .tx_flit(tf), .tx_credit(tc),
                 .rx_valid(rv), .rx_flit(rf), .rx_credit(rc),
@@ -547,7 +562,11 @@ module tb_study;
     integer rate_one, k;
     reg     do_sweep;
     initial begin
-        warm = 1000; win = 4000; drain_max = 20000; seed = SEED;
+        // window = 16000/N clocks, so every N gets about the same number of
+        // packets (the 16-node mesh is slow to simulate)
+        win  = 16000 / N;
+        warm = (win / 4 > 300) ? win / 4 : 300;
+        drain_max = 20000; seed = SEED;
         rate_one = 0;
         do_sweep = $test$plusargs("sweep");
         if (!$value$plusargs("rate=%d", rate_one)) rate_one = 0;
