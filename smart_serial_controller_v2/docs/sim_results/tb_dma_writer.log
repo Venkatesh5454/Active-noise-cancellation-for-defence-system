@@ -1,0 +1,27 @@
+T0: reset values
+T1: EN = 0, packets are consumed and ignored
+T2: 32 records -> one ev_batch right after record 32
+T3: wrap-around of the 64-slot ring
+T4: ring full -> overflow; moving RD_IDX resumes writing
+T5: BRESP errors -> AXI_ERR
+T6: other packet types are consumed and counted in IGNORED
+T7: short and long RECORD payloads
+T8: DMA_CTRL.RESET
+T9: SIZE_LOG2 clamp, rings of 4 and 2 slots, BATCH 0
+T10: time-out batch (1 ms = 200 clocks)
+    time-out ev_batch 527 clocks after the oldest record
+T11: random traffic, random back-pressure, 8-slot ring, BATCH 7
+Whole run
+axi_mem: 217 bursts, 868 beats, 217 B responses (2 not OKAY), 0 protocol errors, 0 range errors
+    217 bursts expected, 58 records dropped in total
+M: memory model self-test (the PROTOCOL ERROR lines below are deliberate)
+axi_mem_selftest: PROTOCOL ERROR: wlast missing on beat awlen (t=149575000)
+axi_mem_selftest: PROTOCOL ERROR: wlast came before beat awlen (too few beats) (t=149655000)
+axi_mem_selftest: PROTOCOL ERROR: burst type is not INCR (t=149715000)
+axi_mem_selftest: PROTOCOL ERROR: burst crosses a 4 KB boundary (t=149775000)
+axi_mem_selftest: PROTOCOL ERROR: awvalid dropped before awready (t=149915000)
+axi_mem_selftest: PROTOCOL ERROR: W signals changed while waiting for wready (t=149965000)
+axi_mem_selftest: PROTOCOL ERROR: wstrb set outside the active byte lanes (t=150075000)
+axi_mem_selftest: address 00004000 (len 0) is outside the memory (t=150195000)
+axi_mem_selftest: 11 bursts, 21 beats, 11 B responses (2 not OKAY), 7 protocol errors, 1 range errors
+ALL 242 CHECKS PASSED

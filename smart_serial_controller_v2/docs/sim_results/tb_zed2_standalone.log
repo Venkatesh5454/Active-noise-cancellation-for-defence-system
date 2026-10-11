@@ -1,0 +1,20 @@
+==============================================================
+ Way 1 (FPGA only) ZedBoard image
+==============================================================
+[1] boot sequencer
+    ok    set-up list done, loop running
+[2] PC reads the flash ID through the NoC (FRAME mode)
+    ok    PC got 20 BA 19
+[3] hub records in the block RAM
+    ok    4 records: source 3, len 2, seq 1..4, data 0C 80
+    ok    timestamps 100 "ms" (5000 us) apart
+    ok    ring is freed by the boot loop (RD_IDX follows WR_IDX, no overflow)
+[4] LEDs
+    ok    LD0 = record count / 4 bit 0
+[5] SW = 4: JD driven by SM0, hub task 1 sends the last value
+    ok    JD2 shows the temperature bytes 0C 80 as UART frames
+[6] SW7 = 1: ADDRESSED frame to the I2C node
+    ok    PC got the temperature 0C 80
+==============================================================
+ALL 8 CHECKS PASSED
+==============================================================

@@ -1,0 +1,6 @@
+A: 4690 words to SM0, 4745 to SM1
+B: 499 + 548 bytes in 209 packets (longest 16)
+C1: npk 209 -> 210, len 1, go0 500 eo0 500
+C2: all 20 words taken at t=306050000
+C2: npk 210 -> 212, lens 16 4
+ALL 19 CHECKS PASSED

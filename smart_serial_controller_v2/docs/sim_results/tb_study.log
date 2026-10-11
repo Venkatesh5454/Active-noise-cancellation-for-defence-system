@@ -1,0 +1,8 @@
+tb_study: FABRIC=3 (0 bus, 1 xbar, 2 mesh, 3 all) N=4 DEPTH=4, 4-flit packets, warm 500, window 2000
+RESULT fabric=bus n=4 rate=0.100 offered=0.0985 accepted=0.0980 total=0.392 lat_avg=7.20 lat_max=19 net_avg=6.89 lat_min=6 pkts=197 qmax=2 sat=0
+RESULT fabric=xbar n=4 rate=0.100 offered=0.0985 accepted=0.0980 total=0.392 lat_avg=6.29 lat_max=9 net_avg=6.10 lat_min=6 pkts=197 qmax=2 sat=0
+RESULT fabric=mesh n=4 rate=0.100 offered=0.0985 accepted=0.0983 total=0.393 lat_avg=8.84 lat_max=15 net_avg=8.64 lat_min=8 pkts=197 qmax=2 sat=0
+RESULT fabric=bus n=4 rate=1.000 offered=1.0245 accepted=0.2334 total=0.933 lat_avg=1108.07 lat_max=1353 net_avg=19.38 lat_min=948 pkts=468 qmax=64 sat=1
+RESULT fabric=xbar n=4 rate=1.000 offered=1.0245 accepted=0.5145 total=2.058 lat_avg=500.14 lat_max=610 net_avg=10.71 lat_min=397 pkts=1030 qmax=64 sat=1
+RESULT fabric=mesh n=4 rate=1.000 offered=1.0245 accepted=0.5619 total=2.248 lat_avg=462.12 lat_max=675 net_avg=16.74 lat_min=323 pkts=1134 qmax=64 sat=1
+ALL 21 CHECKS PASSED

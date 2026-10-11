@@ -48,7 +48,10 @@ m OF n CHECKS FAILED        (and a "FAIL: ..." line for each failure)
 ```
 
 `run_unit.sh` finishes with `UNIT TESTS: 13 passed`, or lists the tests that
-failed. The full log of each test is in `build/<test>.log`.
+failed. The full log of each test is in `build/<test>.log`. Reference logs
+from a passing run are in `docs/sim_results/<test>.log`: compare yours with
+them (the lines printed by the testbench must match; XSim adds its own INFO
+lines around them).
 
 What each unit test proves, and its last lines when everything is right:
 

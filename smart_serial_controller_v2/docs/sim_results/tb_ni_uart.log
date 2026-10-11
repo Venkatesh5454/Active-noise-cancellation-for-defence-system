@@ -1,0 +1,18 @@
+--- 1: slide 17 flow A, PC -> network  (t = 0 us, 1 checks so far)
+    PC 01 9F 03 -> type 1 dest 4 src 3 tag 0 arg 01 len 3 payload 01 03 9f
+--- 2: reply 20 BA 19 back to the PC  (t = 19 us, 4 checks so far)
+    XFER_RESP 00 20 BA 19 -> PC received 3 bytes: 20 ba 19
+--- 3: FRAME corner cases  (t = 124 us, 8 checks so far)
+--- 4: incomplete frame is dropped after the time-out  (t = 590 us, 11 checks so far)
+--- 5: bad lengths  (t = 728 us, 16 checks so far)
+--- 6: ADDRESSED FRAME  (t = 1375 us, 18 checks so far)
+--- 7: RAW  (t = 1589 us, 22 checks so far)
+--- 8: network -> PC, every forwarded type  (t = 2134 us, 33 checks so far)
+--- 9: reserved types are consumed and dropped  (t = 2327 us, 34 checks so far)
+--- 10: header-only packets push nothing  (t = 2362 us, 37 checks so far)
+--- 11: long payloads with TX FIFO back-pressure  (t = 2383 us, 39 checks so far)
+--- 12: en = 0 drains the network and leaves the UART alone  (t = 4017 us, 41 checks so far)
+--- 13: both directions at once  (t = 4165 us, 48 checks so far)
+--- 14: counters and global assertions  (t = 5414 us, 57 checks so far)
+pkts_in 31  pkts_out 27  pushes 480  pops 327  stall-blocked 1768  tx_full-waits 267383
+ALL 65 CHECKS PASSED

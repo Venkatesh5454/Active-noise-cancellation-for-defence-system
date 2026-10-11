@@ -4,3 +4,4 @@ build/
 *.log
 *.vcd
 __pycache__/
+!docs/sim_results/*.log

@@ -1,0 +1,17 @@
+A1: zero-load network latency (head flit: tx_valid -> rx_valid), clocks:
+      dest:  0  1  2  3  4  5
+    src 0:  2  4  6  4  6  8
+    src 1:  4  2  4  6  4  6
+    src 2:  6  4  2  8  6  4
+    src 3:  4  6  8  2  4  6
+    src 4:  6  4  6  4  2  4
+    src 5:  8  6  4  6  4  2
+A1: hops 0/1/2/3 -> 2/4/6/8 clocks = 2 + 2 per hop (2 per router)
+A2: node 5 -> node 1 (2 hops), 3-byte XFER_RESP = HEAD + TAIL:
+    head in -> head out 6 clocks, head in -> tail out 10 clocks
+    start at node 5 -> last byte taken at node 1: 15 clocks
+A3: 5105 random packets, 46950 flits, in 74342 clocks
+A4: hot spot: 600 packets (19182 bytes) into node 1 in 19846 clocks = 0.96 bytes/clock
+A: 5742 packets, 52609 flits through the 3x2 mesh
+B: 4x4 mesh: 3200 packets, 12608 flits in 4620 clocks
+ALL 19 CHECKS PASSED

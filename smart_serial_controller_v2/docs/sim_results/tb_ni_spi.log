@@ -1,0 +1,19 @@
+[1] XFER_REQ cs0 [01][03][9F] -> XFER_RESP [00][20 BA 19]
+    reply: tag 5a, dest 3, 4 bytes: 00 20 ba 19
+[2] DATA [06] (write enable): one CS frame, no reply
+[3] DATA page program: 02 00 00 10 + 40 bytes = 44 bytes, one CS frame
+[4] XFER_REQ [01][01][05] status polling until the flash is ready
+    flash ready after 8 polls, status 00
+[5] long read: wlen 4 + rlen 40 (44 bytes, more than 16 in flight)
+    reply: tag a5, dest 0, 41 bytes: 00 00 8c 5a 5c 7b 9f bd 04 a3 03 b6 ...
+[6] longest read: rlen 60 -> 61-byte reply
+[7] DATA to CS1 (generic slave): 20 bytes and 8 bytes back to back
+[8] CPU sends 3 bytes to CS1 itself and leaves the answers in the RX FIFO
+[9] bad requests -> status 4, engine untouched
+[10] RECORD / ALARM / reserved / stray XFER_RESP: consumed, no reply
+[11] en = 0: packets are consumed and dropped
+[12] heavy stall + 3 back-to-back requests + blocked reply path
+[13] counters and monitors: pkts_in 34 (sent 34), pkts_out 21 (replies 21)
+    shortest CS-high gap between frames: 100 ns
+    shortest CS hold after the last SCLK edge: 120 ns
+ALL 50 CHECKS PASSED
