@@ -53,6 +53,13 @@ run_tb tb_ni_i2c   sim/unit/tb_ni_i2c.v rtl/noc/ni_i2c.v rtl/noc/noc_pkt_tx.v rt
                    rtl/v1/ssc_sync_filter.v sim/models/tb_i2c_slave.v sim/models/tb_i2c_monitor.v \
                    sim/models/tb_i2c_master.v
 
+run_tb tb_ni_se    sim/unit/tb_ni_se.v rtl/se/ni_se.v rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v
+run_tb tb_se_programs sim/unit/tb_se_programs.v rtl/se/se_engine.v rtl/se/se_sm.v \
+                   rtl/top/ssc2_timebase.v rtl/v1/ssc_uart.v rtl/v1/ssc_spi.v rtl/v1/ssc_i2c.v \
+                   rtl/v1/ssc_fifo.v rtl/v1/ssc_baud_gen.v rtl/v1/ssc_sync_filter.v \
+                   sim/models/tb_uart_term.v sim/models/tb_spi_flash.v sim/models/tb_i2c_slave.v \
+                   sim/models/tb_i2c_monitor.v
+
 echo
 if [ -n "$FAILED" ]; then
     echo "UNIT TESTS FAILED:$FAILED"
