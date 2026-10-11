@@ -46,6 +46,9 @@
 //     credit returned), the same rule as noc_router and noc_pkt_rx.
 //   * The round-robin pick uses the usual "mask" trick: first look for the
 //     lowest candidate above the last winner, else take the lowest one.
+//   * The FIFO fronts are kept in a wire array, so f_front[sel] is a plain
+//     N:1 multiplexer (yosys maps a variable part-select [34*sel +: 34]
+//     to a much bigger barrel shifter).
 // =============================================================================
 `timescale 1ns / 1ps
 module study_bus #(
@@ -99,33 +102,6 @@ module study_bus #(
         end
     endfunction
 
-    // ------------------------------------------------------------------
-    // N:1 flit multiplexer: the flit at the front of input s.  Written as
-    // a loop of compares so synthesis builds a plain mux (a variable
-    // part-select would become a barrel shifter).
-    // ------------------------------------------------------------------
-    function [FW-1:0] mux_flit;
-        input [N*FW-1:0] all;
-        input [IW-1:0]   s;
-        integer k;
-        begin
-            mux_flit = {FW{1'b0}};
-            for (k = 0; k < N; k = k + 1)
-                if (s == k[IW-1:0]) mux_flit = all[FW*k +: FW];
-        end
-    endfunction
-
-    // the same for a node number (the route of input s)
-    function [IW-1:0] mux_id;
-        input [N*IW-1:0] all;
-        input [IW-1:0]   s;
-        integer k;
-        begin
-            mux_id = {IW{1'b0}};
-            for (k = 0; k < N; k = k + 1)
-                if (s == k[IW-1:0]) mux_id = all[IW*k +: IW];
-        end
-    endfunction
 
     // ------------------------------------------------------------------
     // Bus state
@@ -139,10 +115,10 @@ module study_bus #(
     reg  [IW-1:0] bdest;
 
     wire [N-1:0]    f_ne;            // input FIFO p is not empty
-    wire [N*FW-1:0] f_front;         // flit at the front of FIFO p
+    wire [FW-1:0]   f_front [0:N-1];  // flit at the front of FIFO p
     wire [N-1:0]    f_head;          // that flit is a HEAD or a SINGLE
     wire [N-1:0]    f_prio;          // its prio bit
-    wire [N*IW-1:0] f_route;         // the node its dest wants
+    wire [IW-1:0]   f_route [0:N-1];  // the node its dest wants
     wire [N-1:0]    cred_ok;         // receiver d has a free buffer slot
     wire [N-1:0]    req;             // node p asks for the bus
 
@@ -152,9 +128,9 @@ module study_bus #(
     wire [N-1:0]  req_hi = req & f_prio;
     wire [N-1:0]  cand   = (|req_hi) ? req_hi : req;
     wire [IW-1:0] sel    = locked ? owner : rr_pick(cand, last);
-    wire [IW-1:0] dsel   = locked ? ldest : mux_id(f_route, sel);
+    wire [IW-1:0] dsel   = locked ? ldest : f_route[sel];
     wire          go     = locked ? (f_ne[owner] && cred_ok[ldest]) : (|cand);
-    wire [FW-1:0] flit   = mux_flit(f_front, sel);
+    wire [FW-1:0] flit   = f_front[sel];
     wire [1:0]    kind   = flit[FW-1:FW-2];
 
     always @(posedge clk or negedge rst_n) begin
@@ -211,12 +187,12 @@ module study_bus #(
             wire           pop;
 
             assign f_ne[p]             = (cnt != {CW{1'b0}});
-            assign f_front[FW*p +: FW] = front;
+            assign f_front[p]          = front;
             assign f_head[p]           = (fkind == K_HEAD) || (fkind == K_SINGLE);
             assign f_prio[p]           = front[PRIO_BIT];
-            assign f_route[IW*p +: IW] = ({1'b0, dest} >= NN) ? PI : dest;
+            assign f_route[p]          = ({1'b0, dest} >= NN) ? PI : dest;
             assign req[p]              = f_ne[p] && f_head[p] &&
-                                         cred_ok[f_route[IW*p +: IW]];
+                                         cred_ok[f_route[p]];
 
             // stray BODY/TAIL at an idle input: throw it away
             assign drop = f_ne[p] && !f_head[p] && !mine;

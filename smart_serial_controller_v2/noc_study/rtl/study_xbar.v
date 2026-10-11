@@ -38,6 +38,9 @@
 //     same but the register saves N*N comparators at N = 16.
 //   * The round-robin pick uses the usual "mask" trick: first look for the
 //     lowest candidate above the last winner, else take the lowest one.
+//   * The FIFO fronts are kept in a wire array, so f_front[sel] is a plain
+//     N:1 multiplexer (yosys maps a variable part-select [34*sel +: 34]
+//     to a much bigger barrel shifter).
 //   * A stray BODY/TAIL at the front of an idle input is thrown away (and its
 //     credit returned), the same rule as noc_router and noc_pkt_rx.
 //   * The FIFO memory has no reset, so it maps to distributed RAM.
@@ -94,30 +97,15 @@ module study_xbar #(
         end
     endfunction
 
-    // ------------------------------------------------------------------
-    // N:1 flit multiplexer: the flit at the front of input s.  Written as
-    // a loop of compares so synthesis builds a plain mux (a variable
-    // part-select would become a barrel shifter).
-    // ------------------------------------------------------------------
-    function [FW-1:0] mux_flit;
-        input [N*FW-1:0] all;
-        input [IW-1:0]   s;
-        integer k;
-        begin
-            mux_flit = {FW{1'b0}};
-            for (k = 0; k < N; k = k + 1)
-                if (s == k[IW-1:0]) mux_flit = all[FW*k +: FW];
-        end
-    endfunction
 
     // ------------------------------------------------------------------
     // Signals shared between the input side and the output side
     // ------------------------------------------------------------------
     wire [N-1:0]    f_ne;        // input FIFO p is not empty
-    wire [N*FW-1:0] f_front;     // flit at the front of FIFO p
+    wire [FW-1:0]   f_front [0:N-1];  // flit at the front of FIFO p
     wire [N-1:0]    f_head;      // that flit is a HEAD or a SINGLE
     wire [N-1:0]    f_prio;      // its prio bit
-    wire [N*IW-1:0] f_route;     // the output its dest wants
+    wire [IW-1:0]   f_route [0:N-1];  // the output its dest wants
     wire [N-1:0]    f_busy;      // input p is in the middle of a packet
     wire [N-1:0]    o_go;        // output o sends a flit this clock
     wire [N*IW-1:0] o_sel;       // ... taken from this input
@@ -150,10 +138,10 @@ module study_xbar #(
             end
 
             assign f_ne[p]             = (cnt != {CW{1'b0}});
-            assign f_front[FW*p +: FW] = front;
+            assign f_front[p]          = front;
             assign f_head[p]           = (kind == K_HEAD) || (kind == K_SINGLE);
             assign f_prio[p]           = front[PRIO_BIT];
-            assign f_route[IW*p +: IW] = ({1'b0, dest} >= NN) ? PI : dest;
+            assign f_route[p]          = ({1'b0, dest} >= NN) ? PI : dest;
             assign f_busy[p]           = busy;
 
             // stray BODY/TAIL at an idle input: throw it away
@@ -214,7 +202,7 @@ module study_xbar #(
 
             for (q = 0; q < N; q = q + 1) begin : g_r
                 assign req[q] = f_ne[q] && f_head[q] && !f_busy[q] &&
-                                (f_route[IW*q +: IW] == OI);
+                                (f_route[q] == OI);
             end
 
             // urgent requests first, then round-robin among equals
@@ -223,7 +211,7 @@ module study_xbar #(
             wire [IW-1:0] sel    = locked ? owner : rr_pick(cand, last);
             wire          have   = locked ? f_ne[owner] : (|cand);
             wire          go     = have && (cred != {CW{1'b0}});
-            wire [FW-1:0] flit   = mux_flit(f_front, sel);
+            wire [FW-1:0] flit   = f_front[sel];
             wire [1:0]    kind   = flit[FW-1:FW-2];
 
             always @(posedge clk or negedge rst_n) begin

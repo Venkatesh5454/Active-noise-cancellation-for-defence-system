@@ -1,0 +1,49 @@
+// =============================================================================
+// uart_rx.se  -  UART receiver for the serial engine (8N1, LSB first)
+// -----------------------------------------------------------------------------
+// The partner of uart_tx.se: load both (uart_tx at 0..6, uart_rx at 7..17)
+// and run uart_tx on SM0 and uart_rx on SM1.
+//
+// The SM ticks at 8 x the baud rate (same divider as uart_tx), so one bit
+// lasts 8 ticks.  How a byte is received:
+//   1. WAIT for the line to go low: that is the falling edge of the start
+//      bit (seen 0..1 tick late, plus the 2-clock input synchroniser).
+//   2. 3 ticks later we are in the middle of the start bit: if the line is
+//      high again it was only a glitch -> start over.
+//   3. 8 ticks later (12 ticks after the edge) we are in the middle of data
+//      bit 0.  IN takes one sample per bit, 8 ticks apart.
+//   4. In the middle of the stop bit the line must be high.  Good byte ->
+//      PUSH it.  Stop bit low (framing error or a break) -> forget the bits,
+//      wait until the line is high again (idle) and start over.
+//
+//   RX word (SMs_RXF / ni_se): the byte is in bits [31:24], bits [23:0] = 0
+//   (IN shifts right, so the first bit received - the LSB - ends at bit 24).
+//   ni_se sends ISR[31:24] for an SM whose IN shifts right, so a NoC packet
+//   simply carries the received bytes.
+//
+//   PUSH noblock: if nobody empties the RX FIFO (4 words) the byte is dropped
+//   and SE_FSTAT shows "RX overflow", but the receiver never loses its place
+//   in the bit stream (like the v1 UART, which drops the byte and flags it).
+//
+//   clock: 100 MHz / (108 + 128/256) = 921.6 kHz = 8 x 115200 baud
+//   pins : pin 2 = RXD (Pmod UART role table): IN_BASE = 2, JMP_PIN = 2,
+//          no outputs (INIT_OE = 0)                    -> PINCTRL 0x00004200
+//   shift: IN shifts right, START_PC = 7               -> SHIFTCTRL 0x00000700
+// =============================================================================
+.program   uart_rx
+.origin    7
+.clkdiv    108 128
+.pinctrl   0x00004200
+.shiftctrl 0x00000700
+
+start:  WAIT 0, pin 2           // start bit: wait for RXD low
+        SET  x, 7       [1]     // 8 data bits; 3 ticks to the middle of the start bit
+        JMP  pin, start [7]     // still high = glitch; else 8 ticks to the middle of bit 0
+bit:    IN   pins, 1            // sample RXD (IN_BASE = 2)
+        JMP  x--, bit   [6]     // 8 ticks per bit
+        JMP  pin, good          // middle of the stop bit: must be high
+        IN   null, 32           // framing error: clear ISR (the byte is dropped)
+        WAIT 1, pin 2           // wait until the line is idle (high) again
+        JMP  start
+good:   PUSH noblock            // byte in [31:24] -> RX FIFO
+        JMP  start
