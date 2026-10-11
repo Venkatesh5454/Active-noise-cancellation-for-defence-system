@@ -190,8 +190,7 @@ module ssc2_core #(
     reg  [1:0]  oled_pwr_r;
     reg         se_loop;
     wire [7:0]  int2_status;
-    wire [15:0] pk_in [0:5];
-    wire [15:0] pk_out [0:5];
+    wire [6*16-1:0] pk_in, pk_out;            // packet counters, node n at [16n +: 16]
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -594,8 +593,8 @@ module ssc2_core #(
                     if (head_out) cout <= cout + 16'd1;
                 end
             end
-            assign pk_in[n]  = cin;
-            assign pk_out[n] = cout;
+            assign pk_in[16*n +: 16]  = cin;
+            assign pk_out[16*n +: 16] = cout;
         end
     endgenerate
 
@@ -650,12 +649,12 @@ module ssc2_core #(
             12'h50C: core_rdata = {8'd0, ni_cfg3};
             12'h510: core_rdata = {8'd0, ni_cfg4};
             12'h514: core_rdata = {8'd0, ni_cfg5};
-            12'h520: core_rdata = {pk_out[0], pk_in[0]};
-            12'h524: core_rdata = {pk_out[1], pk_in[1]};
-            12'h528: core_rdata = {pk_out[2], pk_in[2]};
-            12'h52C: core_rdata = {pk_out[3], pk_in[3]};
-            12'h530: core_rdata = {pk_out[4], pk_in[4]};
-            12'h534: core_rdata = {pk_out[5], pk_in[5]};
+            12'h520: core_rdata = {pk_out[0 +: 16], pk_in[0 +: 16]};
+            12'h524: core_rdata = {pk_out[16 +: 16], pk_in[16 +: 16]};
+            12'h528: core_rdata = {pk_out[32 +: 16], pk_in[32 +: 16]};
+            12'h52C: core_rdata = {pk_out[48 +: 16], pk_in[48 +: 16]};
+            12'h530: core_rdata = {pk_out[64 +: 16], pk_in[64 +: 16]};
+            12'h534: core_rdata = {pk_out[80 +: 16], pk_in[80 +: 16]};
             12'h540: core_rdata = {16'd0, uart_tmo_us};
             12'h544: core_rdata = {16'd0, i2c_tmo_us};
             12'hA00: core_rdata = 32'h0002_0000;            // VERSION 2.0

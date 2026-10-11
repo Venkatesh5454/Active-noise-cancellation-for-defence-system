@@ -204,7 +204,9 @@ uint32_t ssc_wait_events2(uint32_t mask, uint32_t timeout_us)
     }
 }
 
-void     ssc_count_clear(void)  { ssc_wr(SSC2_APB_COUNT, 0u); ssc_wr(SSC2_IRQ_COUNT, 0u); }
+/* IRQ_COUNT first: the clearing write itself is not counted, so after
+ * ssc_count_clear() APB_COUNT starts at exactly 0 */
+void     ssc_count_clear(void)  { ssc_wr(SSC2_IRQ_COUNT, 0u); ssc_wr(SSC2_APB_COUNT, 0u); }
 uint32_t ssc_apb_count(void)    { return ssc_rd(SSC2_APB_COUNT); }
 uint32_t ssc_hw_irq_count(void) { return ssc_rd(SSC2_IRQ_COUNT); }
 

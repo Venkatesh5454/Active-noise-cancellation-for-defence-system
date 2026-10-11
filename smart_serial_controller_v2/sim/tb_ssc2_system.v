@@ -222,7 +222,7 @@ module tb_ssc2_system;
 
     // ---------------- the serial-engine program from the assembler ----------------
     reg [15:0] prog_uart_tx [0:31];
-    integer    prog_len;
+    integer    prog_len, fd;
 
     // ---------------- test sequence ----------------
     localparam [31:0] RING = 32'h0010_0000;        // DMA ring buffer in "DDR"
@@ -233,10 +233,16 @@ module tb_ssc2_system;
         $display("==============================================================");
         $display(" Smart Serial Controller v2 - system test (Way 2 hardware path)");
         $display("==============================================================");
-        for (i = 0; i < 32; i = i + 1) prog_uart_tx[i] = 16'hFFFF;
-        $readmemh({`PROG_DIR, "uart_tx.hex"}, prog_uart_tx);
+        // read the assembler's .hex file (one 4-digit word per line)
         prog_len = 0;
-        for (i = 0; i < 32; i = i + 1) if (prog_uart_tx[i] !== 16'hFFFF && prog_uart_tx[i] !== 16'hxxxx) prog_len = i + 1;
+        fd = $fopen({`PROG_DIR, "uart_tx.hex"}, "r");
+        if (fd != 0) begin
+            while (!$feof(fd) && prog_len < 32) begin
+                if ($fscanf(fd, "%h\n", prog_uart_tx[prog_len]) == 1) prog_len = prog_len + 1;
+                else k = $fgetc(fd);
+            end
+            $fclose(fd);
+        end
 
         repeat (5) @(posedge clk);
         aresetn = 1'b1;
@@ -288,8 +294,8 @@ module tb_ssc2_system;
         axi_wr(12'hA08, 32'hFF);                  // clear INT2
         axi_wr(12'hA0C, 32'h0000_0001);           // INT2_ENABLE: DMA_BATCH
         axi_wr(12'h600, 32'h0000_0001);           // HUB EN -> the CPU now "sleeps"
-        axi_wr(12'hA10, 32'd0);                   // clear APB_COUNT
         axi_wr(12'hA14, 32'd0);                   // clear IRQ_COUNT
+        axi_wr(12'hA10, 32'd0);                   // clear APB_COUNT (last access counted: none)
 
         // ---- [4] at the same time: flow A again (shares router (1,1)) ----
         n0 = pc.rx_cnt;
@@ -371,7 +377,7 @@ module tb_ssc2_system;
         axi_rd(12'h44C, r);
         $display("    SW_CYCLES[JD] = %0d clocks (waited for the SPI frame)", r);
         check(r > 100, "SW_CYCLES counts the wait for the idle SPI engine");
-        pc_wait_bytes(n0 + 40, 3000);
+        pc_wait_bytes(n0 + 40, 8000);           // 40 bytes x 87 us at 115200
         check(pc.rx_cnt == n0 + 40, "PC still got all 40 flash bytes");
         // now send 'A' with the slide-13 program and decode it on JD2
         n0 = la.rx_cnt;
@@ -383,7 +389,8 @@ module tb_ssc2_system;
         axi_rd(12'h46C, r);
         $display("    SW_EDGE[JD] = %0d clocks", r);
 
-        // a quick switch from an idle source: JD -> SM0 is idle -> OFF -> SM0
+        // a quick switch from an idle source: let SM0 finish its stop bit, then JD -> OFF
+        #20000;
         axi_wr(12'h40C, 32'd0);
         k = 0; r = 32'h100;
         while (r[8] && k < 100) begin axi_rd(12'h40C, r); k = k + 1; end
@@ -411,8 +418,8 @@ module tb_ssc2_system;
         axi_wr(12'h008, 32'h0000_0200);           // INT_ENABLE: I2C_DONE
         axi_wr(12'h004, 32'hFFFF);                // clear v1 flags
         axi_wr(12'hA0C, 32'h0000_0000);           // INT2 off
-        axi_wr(12'hA10, 32'd0);
         axi_wr(12'hA14, 32'd0);
+        axi_wr(12'hA10, 32'd0);
         // the v1 driver sequence (sw/ssc2_driver.c ssc_i2c_write_read)
         axi_wr(12'h308, 32'h0000_004B);           // I2C_ADDR
         axi_wr(12'h314, 32'h0000_0000);           // pointer = 0

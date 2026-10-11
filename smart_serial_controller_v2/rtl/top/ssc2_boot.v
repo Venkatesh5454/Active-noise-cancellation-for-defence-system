@@ -6,7 +6,7 @@
 // master that works through a fixed list of steps (the ROM below).
 //
 //   WR   addr, data          write one register
-//   CP   src -> dst          read src, then write dst = ((src >> SH) & MASK) << DSH | OR
+//   CP   src -> dst          read src, then write dst = (((src >> SH) & MASK) << DSH) + ADD
 //   WAIT n                   wait n milliseconds
 //   JMP  i                   continue at step i (used for the endless loop)
 //   END                      stop
@@ -43,7 +43,9 @@ module ssc2_boot #(
     output reg         running        // the set-up list is done, the loop runs
 );
     localparam OP_END = 3'd0, OP_WR = 3'd1, OP_WAIT = 3'd2, OP_CP = 3'd3, OP_JMP = 3'd4;
-    localparam [16:0] MS_M1 = CLK_HZ / 1000 - 1;
+    /* verilator lint_off WIDTHTRUNC */
+    localparam [16:0] MS_M1 = CLK_HZ / 1000 - 1;        // clocks per millisecond - 1
+    /* verilator lint_on WIDTHTRUNC */
 
     // ---------------- the step list ----------------
     // {op[2:0], addr[11:0], addr2[11:0], sh[4:0], mask[15:0], dsh[4:0], data[31:0]}
@@ -54,8 +56,8 @@ module ssc2_boot #(
         wr = {OP_WR, a, 12'd0, 5'd0, 16'd0, 5'd0, d};
     endfunction
     function [EW-1:0] cp(input [11:0] src, input [11:0] dst, input [4:0] sh,
-                         input [15:0] mask, input [4:0] dsh, input [31:0] orv);
-        cp = {OP_CP, src, dst, sh, mask, dsh, orv};
+                         input [15:0] mask, input [4:0] dsh, input [31:0] addv);
+        cp = {OP_CP, src, dst, sh, mask, dsh, addv};
     endfunction
 
     function [EW-1:0] rom(input [5:0] i);
@@ -94,7 +96,7 @@ module ssc2_boot #(
             6'd26: rom = wr(12'h600, 32'h0000_0001);     // HUB_CTRL: EN
             // 7. the endless loop (starts at LOOP)
             6'd36: rom = cp(12'hA1C, 12'h40C, 5'd0, 16'h0007, 5'd0, 32'd0);      // SW2..0 -> PIN_SEL[JD]
-            6'd37: rom = cp(12'hA1C, 12'h50C, 5'd7, 16'h0001, 5'd2, 32'h41);     // SW7 -> UART NI mode
+            6'd37: rom = cp(12'hA1C, 12'h50C, 5'd7, 16'h0001, 5'd1, 32'h43);     // SW7 -> UART NI mode 1 / 2
             6'd38: rom = cp(12'h71C, 12'h480, 5'd2, 16'h000F, 5'd20, 32'd0);     // COUNT/4 -> LD0..3
             6'd39: rom = {OP_WAIT, 12'd0, 12'd0, 5'd0, 16'd0, 5'd0, 32'd10};       // 10 ms
             6'd40: rom = {OP_JMP,  12'd0, 12'd0, 5'd0, 16'd0, 5'd0, {26'd0, LOOP}};
@@ -120,7 +122,7 @@ module ssc2_boot #(
     wire [15:0]   mask  = e[EW-33 -: 16];
     wire [4:0]    dsh   = e[EW-49 -: 5];
     wire [31:0]   data  = e[31:0];
-    wire [31:0]   moved = (((prdata >> sh) & {16'd0, mask}) << dsh) | data;
+    wire [31:0]   moved = (((prdata >> sh) & {16'd0, mask}) << dsh) + data;
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
@@ -152,6 +154,7 @@ module ssc2_boot #(
                             st <= S_WAIT;
                         end
                         OP_JMP:  pc <= data[5:0];
+                        OP_END:  st <= S_STOP;
                         default: st <= S_STOP;
                     endcase
                 end
