@@ -1,0 +1,61 @@
+; se_asm.py listing of programs/manchester_tx.se
+; program manchester_tx, origin 7, 13 words, side_set 1
+;
+; addr = word index in the program memory (decimal), code = hex
+;
+; addr code  line  source
+               1  // =============================================================================
+               2  // manchester_tx.se  -  Manchester (IEEE 802.3) transmitter, one byte per frame
+               3  // -----------------------------------------------------------------------------
+               4  // The "new protocol" of the serial engine (slide 24).  Manchester code puts
+               5  // a transition in the middle of every bit, so the receiver can recover the
+               6  // clock from the data itself.  IEEE 802.3 convention:
+               7  //     bit 1 = low -> high in the middle      bit 0 = high -> low
+               8  //
+               9  // Frame (one per TX word; the line idles LOW):
+              10  //     idle low ... | start bit 1 | d0 d1 .. d7 (LSB first) | idle low
+              11  //   The start bit is the sync: after a long low idle, its rising middle
+              12  //   edge is the first edge the receiver sees, so it locks on it.  At least
+              13  //   17 ticks of idle low (about 1 bit) separate two frames.
+              14  //
+              15  //   TX word: the byte in bits [7:0] (OUT shifts right = LSB first; ni_se
+              16  //   puts NoC bytes there too); the other bits are ignored.
+              17  //
+              18  // How it works: a bit is 16 ticks, 8 per half.  The line is the side-set
+              19  // pin, and every instruction drives it, so there is one code block per
+              20  // bit value:
+              21  //   do_1: NOP side 0 [7]   first half low (8 ticks)
+              22  //         OUT x,1 side 1 [5] + JMP y-- + JMP x--   second half high (8 ticks),
+              23  //         meanwhile fetch the next bit into X and choose the next block
+              24  //   do_0: the same with the levels swapped.
+              25  // sel0 / sel1 fall through into the block that follows them, so the
+              26  // branch costs exactly one tick in both cases.  Y counts the 9 bits.
+              27  //
+              28  //   clock: 100 MHz / (62 + 128/256) = 1.6 MHz ticks -> 100 kbit/s
+              29  //   pins : TX = pin 1 (side-set), SIDE_EN, INIT_OUT 0 (idle low),
+              30  //          INIT_OE = pin 1                              -> PINCTRL 0x02001400
+              31  //   shift: OUT right, START_PC = 7                      -> SHIFTCTRL 0x00000700
+              32  // Origin 7: manchester_tx (7..19) + manchester_rx (20..31) fit together and
+              33  // leave uart_tx (0..6) in place.  Run TX on SM0 and RX on SM1; SE_LOOP
+              34  // (0xA20 bit 0) connects SM0 pin 1 to SM1 pin 2 inside the chip.
+              35  // =============================================================================
+              36  .program   manchester_tx
+              37  .side_set  1
+              38  .origin    7
+              39  .clkdiv    62 128
+              40  .pinctrl   0x02001400
+              41  .shiftctrl 0x00000700
+              42  
+  07   80c0   43  frame:  PULL block       side 0      // wait for a byte; the line idles low
+  08   ad48   44          SET  y, 8        side 0 [13] // start bit + 8 data bits; idle gap
+  09   a021   45          SET  x, 1        side 0      // the start bit is a 1
+  10   0030   46  sel0:   JMP  !x, do_0    side 0      // (end of a 0 bit) next bit 0 -> do_0
+  11   070c   47  do_1:   NOP              side 0 [7]  // bit 1, first half: low
+  12   7521   48          OUT  x, 1        side 1 [5]  // second half: high; fetch the next bit
+  13   108f   49          JMP  y--, sel1   side 1
+  14   1007   50          JMP  frame       side 1      // all 9 bits sent
+  15   104b   51  sel1:   JMP  x--, do_1   side 1      // (end of a 1 bit) next bit 1 -> do_1
+  16   1711   52  do_0:   NOP              side 1 [7]  // bit 0, first half: high
+  17   6521   53          OUT  x, 1        side 0 [5]  // second half: low; fetch the next bit
+  18   008a   54          JMP  y--, sel0   side 0
+  19   0007   55          JMP  frame       side 0      // all 9 bits sent

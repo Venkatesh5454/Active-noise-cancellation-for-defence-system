@@ -1,0 +1,6 @@
+build/
+*.vcd
+*.jou
+*.log
+!docs/sim_results/*.log
+.Xil/

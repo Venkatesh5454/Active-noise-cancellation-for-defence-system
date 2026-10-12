@@ -1,0 +1,11 @@
+E: JC I2C -> UART requested mid-frame: waited 32 clocks, SW_CYCLES = 33
+SWITCH TIME: idle old source (JA UART -> SM1): SW_CYCLES = 2 clocks (20 ns);
+             the new source sees its pins after 8 more settle clocks.
+SWITCH TIME: FORCE (JB SPI busy -> SM0) = 1 clock, from GPIO/OFF = 1 clock
+SWITCH TIME: slide-14 demo, JD SPI -> SM0 written in clock 25 of a 68-clock SPI
+             frame (0x9F, SCK = clk/8): waited 42 clocks for the frame end, SW_CYCLES = 44,
+             first SM0 edge on JD at SW_EDGE = 46 (2 clocks after hand-over)
+COVERAGE: 1586 switches (380 waited for a frame end, 72 forced while busy), 1478 hand-overs, 1478 ev_switch clocks
+COVERAGE: 433 writes ignored while switching, 274 same-value writes, 1018 SW_EDGE latches
+COVERAGE: 79075 source-clocks on 2+ ports, 2491 settle-shadow clocks, 2 frames started in a FLOAT clock
+ALL 1217806 CHECKS PASSED

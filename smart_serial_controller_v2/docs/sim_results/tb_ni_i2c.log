@@ -1,0 +1,36 @@
+[1] XFER_REQ 0x4B [01][02][00] -> XFER_RESP [00][0C 80] (repeated START)
+    reply: tag 21, dest 1, 3 bytes: 00 0c 80
+        bus: S 96 A 00 A Sr 97 A 0c A 80 N P
+[2] write only: [03][00][02 AA BB] -> [00]
+        bus: S 96 A 02 A aa A bb A P
+[3] write-then-read: [01][02][02] -> [00][AA BB]
+[4] read only: [00][04] -> [00][BB 44 45 46] (pointer was 3)
+        bus: S 97 A bb A 44 A 45 A 46 N P
+[5] long read: [01][60][00] -> 61-byte reply, heavy stall
+    reply: tag 25, dest 0, 61 bytes: 00 0c 80 aa bb 44 45 46 47 48 49 4a ...
+    most bytes waiting in the RX FIFO: 1
+    5b: read 24 bytes, stall held for 300 us after byte 2: RX FIFO fills
+    5c: read 4 bytes, stall from byte 1 until after ev_done
+[6] address probe (wlen = rlen = 0)
+        bus: S 96 A P
+[7] NACK: wrong address 0x4C
+        bus: S 98 N P
+        bus: S 99 N P
+[8] arbitration: a second master starts at the same moment (100 kHz)
+        bus: S 20 N P
+[9] time-out: a device holds SCL low during the address byte, timeout 50 us
+    command to abort: 49.1 us
+        bus: S 96 A 00 A Sr 97 A 0c A 80 N P
+    timeout_us = 0: times out at once
+[10] bad requests -> [04], engine untouched
+[11] DATA: 5-byte write, 20-byte write, DATA with NACK
+        bus: S 96 A 04 A 11 A 22 A 33 A 44 A P
+        bus: S 98 N P
+[12] CPU reads 2 bytes (pointer 4) itself and leaves them in the RX FIFO
+    CPU writes 3 bytes; a probe and a TMP2 read arrive meanwhile
+        bus: S 96 A 0c A 4c A 4d A P S 96 A P S 96 A 00 A Sr 97 A 0c A 80 N P
+    CPU write of 2 bytes with only 1 pushed (engine stuck), then a TMP2 read
+[13] other packet types and en = 0: consumed, nothing on the bus
+[14] heavy stall + 3 back-to-back requests + blocked reply path
+[15] counters and monitors: pkts_in 42 (sent 42), pkts_out 32 (replies 32)
+ALL 77 CHECKS PASSED

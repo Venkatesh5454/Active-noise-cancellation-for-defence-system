@@ -1,0 +1,5 @@
+R: 500 packets routed (135 with dest >= W*H -> LOCAL), latency 2..2 clocks per hop
+T1: one 200-flit packet LOCAL->EAST in 200 clocks = 1.000 flits/clock
+T6: 2000 random packets (9336 flits total so far) in 8281 clocks
+T8: 2539 packets, 9339 flits through the main router
+ALL 1547 CHECKS PASSED

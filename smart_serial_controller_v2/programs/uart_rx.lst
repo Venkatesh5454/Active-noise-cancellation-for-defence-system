@@ -1,0 +1,55 @@
+; se_asm.py listing of programs/uart_rx.se
+; program uart_rx, origin 7, 11 words, side_set 0
+;
+; addr = word index in the program memory (decimal), code = hex
+;
+; addr code  line  source
+               1  // =============================================================================
+               2  // uart_rx.se  -  UART receiver for the serial engine (8N1, LSB first)
+               3  // -----------------------------------------------------------------------------
+               4  // The partner of uart_tx.se: load both (uart_tx at 0..6, uart_rx at 7..17)
+               5  // and run uart_tx on SM0 and uart_rx on SM1.
+               6  //
+               7  // The SM ticks at 8 x the baud rate (same divider as uart_tx), so one bit
+               8  // lasts 8 ticks.  How a byte is received:
+               9  //   1. WAIT for the line to go low: that is the falling edge of the start
+              10  //      bit (seen 0..1 tick late, plus the 2-clock input synchroniser).
+              11  //   2. 3 ticks later we are in the middle of the start bit: if the line is
+              12  //      high again it was only a glitch -> start over.
+              13  //   3. 8 ticks later (12 ticks after the edge) we are in the middle of data
+              14  //      bit 0.  IN takes one sample per bit, 8 ticks apart.
+              15  //   4. In the middle of the stop bit the line must be high.  Good byte ->
+              16  //      PUSH it.  Stop bit low (framing error or a break) -> forget the bits,
+              17  //      wait until the line is high again (idle) and start over.
+              18  //
+              19  //   RX word (SMs_RXF / ni_se): the byte is in bits [31:24], bits [23:0] = 0
+              20  //   (IN shifts right, so the first bit received - the LSB - ends at bit 24).
+              21  //   ni_se sends ISR[31:24] for an SM whose IN shifts right, so a NoC packet
+              22  //   simply carries the received bytes.
+              23  //
+              24  //   PUSH noblock: if nobody empties the RX FIFO (4 words) the byte is dropped
+              25  //   and SE_FSTAT shows "RX overflow", but the receiver never loses its place
+              26  //   in the bit stream (like the v1 UART, which drops the byte and flags it).
+              27  //
+              28  //   clock: 100 MHz / (108 + 128/256) = 921.6 kHz = 8 x 115200 baud
+              29  //   pins : pin 2 = RXD (Pmod UART role table): IN_BASE = 2, JMP_PIN = 2,
+              30  //          no outputs (INIT_OE = 0)                    -> PINCTRL 0x00004200
+              31  //   shift: IN shifts right, START_PC = 7               -> SHIFTCTRL 0x00000700
+              32  // =============================================================================
+              33  .program   uart_rx
+              34  .origin    7
+              35  .clkdiv    108 128
+              36  .pinctrl   0x00004200
+              37  .shiftctrl 0x00000700
+              38  
+  07   2002   39  start:  WAIT 0, pin 2           // start bit: wait for RXD low
+  08   a127   40          SET  x, 7       [1]     // 8 data bits; 3 ticks to the middle of the start bit
+  09   07c7   41          JMP  pin, start [7]     // still high = glitch; else 8 ticks to the middle of bit 0
+  10   4001   42  bit:    IN   pins, 1            // sample RXD (IN_BASE = 2)
+  11   064a   43          JMP  x--, bit   [6]     // 8 ticks per bit
+  12   00d0   44          JMP  pin, good          // middle of the stop bit: must be high
+  13   4060   45          IN   null, 32           // framing error: clear ISR (the byte is dropped)
+  14   2082   46          WAIT 1, pin 2           // wait until the line is idle (high) again
+  15   0007   47          JMP  start
+  16   8000   48  good:   PUSH noblock            // byte in [31:24] -> RX FIFO
+  17   0007   49          JMP  start

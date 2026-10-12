@@ -1,0 +1,94 @@
+; se_asm.py listing of programs/i2c_master.se
+; program i2c_master, origin 0, 32 words, side_set 1
+;
+; addr = word index in the program memory (decimal), code = hex
+;
+; addr code  line  source
+               1  // =============================================================================
+               2  // i2c_master.se  -  I2C master (100 kHz, 7-bit addresses, clock stretching)
+               3  // -----------------------------------------------------------------------------
+               4  // Made for the PmodTMP2 on JC: pin 2 = SCL, pin 3 = SDA, both open drain
+               5  // (OD_MASK = 1100: writing 0 pulls the line low, writing 1 lets it go and
+               6  // the pull-up makes it high).  SCL is the side-set pin, SDA is the OUT, SET,
+               7  // IN and JMP pin.
+               8  //
+               9  // One TX word = one byte on the bus (OUT shifts left, MSB first):
+              10  //   [31]    START  : send START (from idle) or a repeated START first
+              11  //   [30]    STOP   : send STOP after this byte
+              12  //   [29:22] BYTE   : the byte to send; 0xFF for a read (SDA released)
+              13  //   [21]    9TH    : the 9th (ACK) bit we drive: 1 for a write (released,
+              14  //                    so the slave can ACK); for a read 0 = ACK, 1 = NACK
+              15  //   [20:0]  0
+              16  // One RX word per byte: [8:1] = the byte seen on SDA (the read data, or
+              17  // our own written byte read back), [0] = the 9th bit seen on SDA
+              18  // (0 = ACK, 1 = NACK), [31:9] = 0.
+              19  //
+              20  // PmodTMP2 temperature read (address 0x4B) = 5 words:
+              21  //   0x80000000 | 0x96<<22 | 1<<21  START, address + write  -> RX 0x12C (ACK)
+              22  //   0x00<<22 | 1<<21                register pointer 0x00   -> RX 0x000
+              23  //   0x80000000 | 0x97<<22 | 1<<21  repeated START, + read  -> RX 0x12E
+              24  //   0xFF<<22                        read byte 1, ACK        -> RX 0x018 (0x0C)
+              25  //   0x40000000 | 0xFF<<22 | 1<<21  read byte 2, NACK, STOP -> RX 0x101 (0x80)
+              26  //
+              27  // NACK: if the 9th bit is high (the slave did not answer, or we sent NACK)
+              28  // the byte is pushed (bit 0 = 1) and STOP is sent at once, like the v1
+              29  // engine.  If that word had no STOP flag the transaction was cut short, so
+              30  // the following TX words are thrown away (no RX words) up to and including
+              31  // the next word with the STOP flag.  So always end a transaction with a
+              32  // STOP word, and end a read with "NACK + STOP".
+              33  // The first word after a STOP always starts with START (bit 31 is ignored).
+              34  // While the SM waits for the next word inside a transaction it holds SCL
+              35  // low (legal); between transactions both lines are released.
+              36  // Clock stretching: after releasing SCL the SM WAITs until SCL is really
+              37  // high, so a slave may hold SCL low as long as it likes.  (Single master:
+              38  // arbitration is not checked.)
+              39  //
+              40  // Timing (1 tick = 1.25 us): every bit is 8 ticks = 10 us = 100 kHz:
+              41  //   SCL low 4 ticks (5 us >= 4.7), SDA changes 1 tick after SCL falls,
+              42  //   SCL high 4 ticks (5 us >= 4.0), SDA sampled 2 ticks after SCL rises.
+              43  //   START hold 5 us, repeated-START set-up 6.25 us, STOP set-up 5 us.
+              44  //   clock: 100 MHz / 125 = 800 kHz ticks
+              45  //   pins : OUT/SET/IN/JMP pin 3, SET_COUNT 1, SIDE_PIN 2, SIDE_EN,
+              46  //          OD_MASK 1100, INIT_OE 0 (both lines released) -> PINCTRL 0x000C7B1F
+              47  //   shift: OUT left, IN left, START_PC = 0              -> SHIFTCTRL 0x00000003
+              48  // The program uses all 32 words, so it is loaded alone (origin 0).
+              49  // =============================================================================
+              50  .program   i2c_master
+              51  .side_set  1
+              52  .origin    0
+              53  .clkdiv    125 0
+              54  .pinctrl   0x000C7B1F
+              55  .shiftctrl 0x00000003
+              56  
+  00   90c0   57  idle:   PULL block       side 1     // bus free (SCL released): wait for a word
+  01   7061   58          OUT  null, 1     side 1     // from idle a START is always sent
+  02   1007   59          JMP  start       side 1
+  03   80c0   60  hold:   PULL block       side 0     // inside a transaction: SCL held low
+  04   6021   61          OUT  x, 1        side 0     // [31] START?
+  05   0029   62          JMP  !x, byte    side 0
+  06   a201   63          SET  pins, 1     side 0 [2] // repeated START: release SDA while SCL is low
+  07   3382   64  start:  WAIT 1, pin 2    side 1 [3] // release SCL, wait until it is really high
+  08   b300   65          SET  pins, 0     side 1 [3] // START: SDA falls while SCL is high
+  09   6121   66  byte:   OUT  x, 1        side 0 [1] // SCL low; X = [30] STOP flag
+  10   a047   67          SET  y, 7        side 0
+  11   6201   68  bit:    OUT  pins, 1     side 0 [2] // SDA = next bit (MSB first) while SCL is low
+  12   3082   69          WAIT 1, pin 2    side 1     // release SCL, wait for it (clock stretching)
+  13   5101   70          IN   pins, 1     side 1 [1] // sample SDA in the middle of SCL high
+  14   008b   71          JMP  y--, bit    side 0     // SCL low
+  15   6201   72          OUT  pins, 1     side 0 [2] // 9th bit: release (write) or ACK/NACK (read)
+  16   3082   73          WAIT 1, pin 2    side 1     // release SCL, wait (the slave may stretch here)
+  17   5001   74          IN   pins, 1     side 1     // sample the ACK bit
+  18   10de   75          JMP  pin, nack   side 1     // SDA high = NACK
+  19   8040   76          PUSH block       side 0     // SCL low; RX word = {byte, ACK bit}
+  20   0023   77          JMP  !x, hold    side 0     // no STOP flag: keep the bus
+  21   a200   78  stop:   SET  pins, 0     side 0 [2] // SDA low while SCL is low
+  22   3282   79          WAIT 1, pin 2    side 1 [2] // release SCL, wait until it is high
+  23   b301   80          SET  pins, 1     side 1 [3] // STOP: SDA rises while SCL is high (+ bus free time)
+  24   1040   81          JMP  x--, idle   side 1     // X = 1: normal end of the transaction
+  25   90c0   82  skip:   PULL block       side 1     // X = 0: NACK in the middle of a transaction:
+  26   7061   83          OUT  null, 1     side 1     //   throw words away up to the one with STOP
+  27   7021   84          OUT  x, 1        side 1
+  28   1039   85          JMP  !x, skip    side 1
+  29   1000   86          JMP  idle        side 1
+  30   8040   87  nack:   PUSH block       side 0     // SCL low; RX word with bit 0 = 1
+  31   0015   88          JMP  stop        side 0

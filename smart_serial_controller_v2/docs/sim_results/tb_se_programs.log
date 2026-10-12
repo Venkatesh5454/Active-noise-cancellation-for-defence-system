@@ -1,0 +1,9 @@
+A: UART 115200 8N1 - uart_tx / uart_rx vs v1 ssc_uart
+B: SPI mode 0 - spi_master vs v1 ssc_spi, flash READ ID / WREN / RDSR
+C: I2C 100 kHz - i2c_master vs v1 ssc_i2c, PmodTMP2 at 0x4B
+  SE SCL: shortest high 5000 ns, shortest low 5000 ns
+D: Manchester IEEE 802.3 - manchester_tx -> manchester_rx, CRC-16
+  CRC-16 over the received bits: SE 6dfd, model 6dfd
+E: OLED SSD1306 write-only SPI - oled_spi on SM1
+  SCLK: shortest high 100 ns, shortest period 200 ns
+ALL 69 CHECKS PASSED
