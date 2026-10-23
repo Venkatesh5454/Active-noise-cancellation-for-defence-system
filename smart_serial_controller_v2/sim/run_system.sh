@@ -2,9 +2,10 @@
 # -----------------------------------------------------------------------------
 # Run the two whole-design testbenches with Icarus Verilog.
 #     cd smart_serial_controller_v2
-#     sh sim/run_system.sh              # both (about 10 minutes)
+#     sh sim/run_system.sh              # all three (about 10 minutes)
 #     sh sim/run_system.sh system       # only tb_ssc2_system   (Way 2, ~3 min)
 #     sh sim/run_system.sh standalone   # only tb_zed2_standalone (Way 1, ~7 min)
+#     sh sim/run_system.sh gate         # only tb_zed2_gate (Way 1, pins only, ~20 s)
 #     sh sim/run_system.sh system vcd   # also write build/tb_ssc2_system.vcd
 # Each prints "ALL n CHECKS PASSED" or "m OF n CHECKS FAILED"; the script
 # exits with an error if any check failed.
@@ -32,6 +33,9 @@ if [ "$WHICH" = "all" ] || [ "$WHICH" = "system" ]; then
 fi
 if [ "$WHICH" = "all" ] || [ "$WHICH" = "standalone" ]; then
     run_sys tb_zed2_standalone boards/zedboard/zed2_pads.v boards/zedboard/zed2_top_standalone.v
+fi
+if [ "$WHICH" = "all" ] || [ "$WHICH" = "gate" ]; then
+    run_sys tb_zed2_gate boards/zedboard/zed2_pads.v boards/zedboard/zed2_top_standalone.v
 fi
 
 echo

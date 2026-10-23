@@ -6,7 +6,7 @@ you never have to judge a waveform by eye to know whether the design works.
 | level | what | tool | time | pass looks like |
 |---|---|---|---|---|
 | 1 | each block on its own (13 unit testbenches) | Icarus or Vivado XSim | ~3 min | `ALL n CHECKS PASSED` for every test |
-| 2 | the whole controller as the ARM sees it, and the whole FPGA-only board image | Icarus or XSim | ~10 min | `ALL 36 CHECKS PASSED`, `ALL 8 CHECKS PASSED` |
+| 2 | the whole controller as the ARM sees it, the whole FPGA-only board image, and that image through its pins only (also as a gate netlist) | Icarus or XSim | ~10 min | `ALL 36 CHECKS PASSED`, `ALL 8 CHECKS PASSED`, `ALL 11 CHECKS PASSED` |
 | 3 | waveforms, when you want to see *why* | GTKWave or the Vivado wave window | - | the pictures described in section 4 |
 | 4 | the real ZedBoard | Vivado + Vitis + PC + logic analyser | 1-2 h | the results in sections 5 and 6 |
 
@@ -166,6 +166,37 @@ ALL 8 CHECKS PASSED
 
 ---
 
+### 2.3 `tb_zed2_gate`: the board image through its pins only (also gate level)
+
+The same Way 1 image, but the testbench only uses the pins of
+`zed2_top_standalone` and real time (no internal names, no shortened
+milliseconds). That is what a synthesised or implemented netlist offers, so
+this one test also runs as **post-synthesis** and **post-implementation**
+(functional and timing) simulation in Vivado (`docs/VIVADO_GUI.md`).
+Switches: SW7 = 1 (ADDRESSED frames), SW2..0 = 2 (JD shows the SPI pins).
+
+```
+[1] flash ID through the NoC: 04 00 01 9F 03
+    ok    PC received 3 bytes
+    ok    they are 20 BA 19
+[2] crossbar: JD shows a copy of the SPI pins (SW2..0 = 2)
+    ok    JD1 (CS#) went low
+    ok    JD4 (SCK) clocked at least 4 bytes
+[3] temperature through the NoC: 05 4B 01 00 02
+    ok    PC received 2 bytes
+    ok    they are 0C 80 (25.00 C)
+[4] probe copies on JD7..10
+    ok    JD7 (UART TXD copy) moved
+    ok    JD9 (I2C SCL copy) moved
+[5] fixed outputs
+    ok    JB7..10 (CS1#, RST#, WP#, HOLD#) high
+    ok    OLED supplies off
+    ok    LD7 (interrupt line) off
+ALL 11 CHECKS PASSED
+```
+
+`sh sim/run_system.sh gate` runs it on the Verilog (about 20 s).
+
 ## 4. Looking at waveforms
 
 Icarus: `sh sim/run_system.sh system vcd` writes `build/tb_ssc2_system.vcd`
@@ -173,9 +204,12 @@ Icarus: `sh sim/run_system.sh system vcd` writes `build/tb_ssc2_system.vcd`
 `gtkwave build/tb_ssc2_system.vcd`. For a unit test, add
 `$dumpfile("build/x.vcd"); $dumpvars(0, tb_name);` to its `initial` block.
 
-Vivado: open `build/sim/ssc2_sim.xpr` (made by `vivado/run_sim.tcl`), click
-*Run Simulation > Run Behavioral Simulation*, then in the Tcl console type
-`log_wave -r /` and `run all`. Add signals from the Scope window.
+Vivado: double-click `windows\0_create_project_gui.bat`, right-click the
+simulation set you want (e.g. `sim_system`) -> *Make Active*, click *Run
+Simulation > Run Behavioral Simulation*, then in the Tcl console type
+`log_wave -r /`, `restart` and `run all`. Add signals from the Scope window.
+Details, including post-synthesis and post-implementation simulation:
+`docs/VIVADO_GUI.md`.
 
 What the important waveforms look like:
 

@@ -40,23 +40,37 @@
 // =============================================================================
 `timescale 1ns / 1ps
 module tb_se_programs;
-    // Folder with the assembled programs: "programs/" when the simulator runs
-    // in the project folder (Icarus, sim/run_*.sh), six levels up when it runs
-    // in Vivado's build/sim/ssc2_sim.sim/sim_1/behav/xsim folder
-    // (vivado/run_sim.tcl).  +define+PROG_DIR="..." overrides both.
+    // Folder with the assembled programs (programs/*.hex).  The simulator may
+    // run in the project folder (Icarus, sim/run_*.sh) or deep inside a
+    // Vivado project (e.g. build/gui/ssc2_gui.sim/sim_x/behav/xsim, or your
+    // own project's <name>.sim/sim_1/behav/xsim), so try the folder itself
+    // and up to 8 levels above.  +define+PROG_DIR="..." overrides this.
     function [8*64-1:0] prog_dir;
         input dummy;
-        integer fdp;
+        integer fdp, lvl;
+        reg [8*64-1:0] cand;
         begin
 `ifdef PROG_DIR
             prog_dir = `PROG_DIR;
 `else
-            fdp = $fopen("programs/uart_tx.hex", "r");
-            if (fdp != 0) begin
-                $fclose(fdp);
-                prog_dir = "programs/";
-            end else begin
-                prog_dir = "../../../../../../programs/";
+            prog_dir = "programs/";
+            for (lvl = 8; lvl >= 0; lvl = lvl - 1) begin
+                case (lvl)
+                    0: cand = "programs/";
+                    1: cand = "../programs/";
+                    2: cand = "../../programs/";
+                    3: cand = "../../../programs/";
+                    4: cand = "../../../../programs/";
+                    5: cand = "../../../../../programs/";
+                    6: cand = "../../../../../../programs/";
+                    7: cand = "../../../../../../../programs/";
+                    default: cand = "../../../../../../../../programs/";
+                endcase
+                fdp = $fopen({cand, "uart_tx.hex"}, "r");
+                if (fdp != 0) begin
+                    $fclose(fdp);
+                    prog_dir = cand;            // the nearest one wins (loop ends at 0)
+                end
             end
 `endif
         end

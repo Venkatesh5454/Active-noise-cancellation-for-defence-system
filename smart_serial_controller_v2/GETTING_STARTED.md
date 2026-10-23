@@ -98,6 +98,15 @@ The many Vivado `INFO` lines are normal; the testbench lines start with
 > `set "MY_VIVADO_SETTINGS=C:\Xilinx\2025.1\Vivado\settings64.bat"` (your
 > path, one pair of quotes around the whole NAME=value).
 
+**Option C, the Vivado GUI (to click through everything and see waveforms):**
+double-click **`windows\0_create_project_gui.bat`**. It creates and opens
+`build\gui\ssc2_gui.xpr` with all design files, the pin constraints, the
+right top level (`zed2_top_standalone`) and one simulation set per
+testbench. **Do not build the project by hand**: a design file added as a
+simulation source, or the wrong top, makes synthesis fail with
+*module 'xbar' not found* - see [docs/VIVADO_GUI.md](docs/VIVADO_GUI.md),
+which also explains post-synthesis and post-implementation simulation.
+
 What each test proves and what its output must look like:
 **[docs/VERIFICATION.md](docs/VERIFICATION.md)**. Waveforms: section 4 of
 that file.
@@ -231,6 +240,8 @@ se_demos.h, se_programs.h, oled_font.h`.
 | Symptom | Fix |
 |---|---|
 | A `.bat` says "Could not find Vivado" | set `MY_VIVADO_SETTINGS` in `windows\_find_vivado.bat` (Step 3) |
+| Synthesis: `[Synth 8-439] module 'xbar' not found` (or any other module) in a project you made yourself | a design file was added only as a simulation source, or not added; and the top must be `zed2_top_standalone`, not `ssc2_axi_top`. Use `windows\0_create_project_gui.bat` instead; the reason and the manual fix are in [docs/VIVADO_GUI.md](docs/VIVADO_GUI.md) |
+| Post-synthesis / post-implementation simulation does not start or fails to elaborate | synthesis/implementation must finish first, and the active simulation set must be `sim_1` (`tb_zed2_gate`, which uses only the pins); the other testbenches are for behavioural simulation ([docs/VIVADO_GUI.md](docs/VIVADO_GUI.md)) |
 | "file not found" during a Windows build | path too long: use `C:\ssc\smart_serial_controller_v2` |
 | `ZedBoard board part not found` (Way 2) | install the board files (Step 2) |
 | `apply_bd_automation` error in Way 2 | open `build\ps_system\ssc2_ps.xpr`, delete the block design `system`, run the script again from a fresh Vivado; the log line before the error names the interface |

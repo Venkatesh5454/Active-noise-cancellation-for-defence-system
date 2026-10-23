@@ -37,7 +37,7 @@ build, run, step by step).
 | Way 1: FPGA only | `zed2_top_standalone`: a boot sequencer sets everything up; PC frames, sensor records into block RAM, switches drive the crossbar |
 | Way 2: ARM + FPGA | `zed2_top_ps` + block design (PS, controller, HP0) + the C console app in `sw/` |
 | Serial-engine programs | `programs/*.se`, assembler `tools/se_asm.py` |
-| Tests | 13 self-checking unit testbenches + 2 system testbenches (`sim/`), all passing |
+| Tests | 13 self-checking unit testbenches + 3 system testbenches (`sim/`), all passing; `tb_zed2_gate` also runs on the post-synthesis / post-implementation netlist |
 | NoC study | `noc_study/`: bus vs crossbar vs mesh at 4, 8, 16 nodes |
 | Scripts | `vivado/*.tcl`, double-click `windows/*.bat`, Icarus `sim/run_*.sh` |
 | Documentation | `docs/` (below), PDFs in `docs/pdf/` |
@@ -67,6 +67,7 @@ Vivado area and Fmax) are for you to take with the procedures in
 | [docs/VERIFICATION.md](docs/VERIFICATION.md) | how to verify, and what correct output looks like (simulation and board) |
 | [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) | the six measurements of slide 24 |
 | [docs/REGISTER_MAP.md](docs/REGISTER_MAP.md) | every register |
+| [docs/VIVADO_GUI.md](docs/VIVADO_GUI.md) | the Vivado GUI project: synthesis, implementation, behavioural / post-synthesis / post-implementation simulation (and why a hand-made project fails with "module 'xbar' not found") |
 | [docs/SPEC.md](docs/SPEC.md) | the design contract (packet format, ports, behaviour) |
 | `docs/blocks/*.md` | one detailed explanation per block: `noc`, `xbar`, `serial_engine`, `se_programs`, `ni_se`, `ni_uart`, `ni_spi_i2c`, `hub`, `dma_writer` |
 | [noc_study/README.md](noc_study/README.md) | the NoC scalability study |
@@ -76,7 +77,7 @@ Vivado area and Fmax) are for you to take with the procedures in
 ```
 # simulation (WSL / Linux, Icarus Verilog)
 sh sim/run_unit.sh                 # 13 unit tests, ~3 min
-sh sim/run_system.sh               # 2 system tests, ~10 min
+sh sim/run_system.sh               # 3 system tests, ~10 min
 sh tools/build_programs.sh         # after editing programs/*.se
 
 # Vivado (any OS), from this folder
@@ -88,7 +89,7 @@ vivado -mode batch -source vivado/build_ps_system.tcl      # Way 2 bitstream + X
 python tools/pc_frame.py COM5 01 9F 03
 ```
 
-Windows: `windows\1_simulate.bat`, `2_build_way1_fpga_only.bat`,
+Windows: `windows\0_create_project_gui.bat` (complete GUI project), `1_simulate.bat`, `2_build_way1_fpga_only.bat`,
 `3_build_way2_arm_fpga.bat`, `4_open_project_gui.bat`,
 `5_noc_study_vivado.bat`.
 
