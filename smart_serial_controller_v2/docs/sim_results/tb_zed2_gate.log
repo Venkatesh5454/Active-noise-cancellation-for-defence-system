@@ -1,0 +1,23 @@
+==============================================================
+ Way 1 image, pins only (works on the post-synthesis and
+ post-implementation netlists too)
+==============================================================
+[1] flash ID through the NoC: 04 00 01 9F 03
+    ok    PC received 3 bytes
+    ok    they are 20 BA 19
+[2] crossbar: JD shows a copy of the SPI pins (SW2..0 = 2)
+    ok    JD1 (CS#) went low
+    ok    JD4 (SCK) clocked at least 4 bytes
+[3] temperature through the NoC: 05 4B 01 00 02
+    ok    PC received 2 bytes
+    ok    they are 0C 80 (25.00 C)
+[4] probe copies on JD7..10
+    ok    JD7 (UART TXD copy) moved
+    ok    JD9 (I2C SCL copy) moved
+[5] fixed outputs
+    ok    JB7..10 (CS1#, RST#, WP#, HOLD#) high
+    ok    OLED supplies off
+    ok    LD7 (interrupt line) off
+==============================================================
+ALL 11 CHECKS PASSED
+==============================================================
