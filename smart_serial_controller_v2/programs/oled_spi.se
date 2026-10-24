@@ -1,0 +1,47 @@
+// =============================================================================
+// oled_spi.se  -  write-only SPI for the ZedBoard OLED (SSD1306)
+// -----------------------------------------------------------------------------
+// Pins (crossbar port 4 = OLED): pin 0 = DC, pin 1 = SDIN, pin 2 = RES#,
+// pin 3 = SCLK (side-set).  The board ties the OLED's CS# low, so there is
+// no chip select.  SPI mode 0, MSB first: SDIN changes while SCLK is low,
+// the display takes it on the rising edge.
+//
+// One TX word = one byte plus the DC and RES# levels (OUT shifts left):
+//   [31]    DC    0 = command byte, 1 = display data byte
+//   [30]    0     (this bit goes to SCLK, where side-set overrides it)
+//   [29]    RES#  0 = hold the display in reset, 1 = run
+//   [28]    0     (goes to SDIN, overwritten by the first data bit)
+//   [27:20] BYTE  sent MSB first
+//   [19:0]  0
+// So in hex the top digit is the "mode" and the next two are the byte:
+//   0x2AF00000 = command 0xAF (DC 0, RES# 1)
+//   0xA5500000 = data    0x55 (DC 1, RES# 1)
+//   0x0E300000 = RES# low (the byte, a NOP command, is ignored in reset)
+// How it works: OUT pins, 4 (OUT_BASE 1, pins 1,2,3,0) sets SDIN, RES#,
+// SCLK and DC from bits 28..31 in one go - DC and RES# are set before the
+// byte and keep their level until the next word.  Then 8 x (OUT pins, 1
+// with SCLK low, JMP with SCLK high).  Nothing is pushed to the RX FIFO.
+// Power-up: OLED_PWR VDD on, push 0x0E300000 and wait >= 3 us (RES# stays
+// low while the SM waits for the next word), push 0x2E300000 (RES# high,
+// NOP), the init commands (0x2xx00000), OLED_PWR VBAT on, then data.
+//
+// One bit = 2 ticks.  SSD1306: SCLK cycle >= 100 ns, high/low >= 20 ns.
+//   clock: 100 MHz / 10 = 10 MHz ticks -> SCLK = 5 MHz
+//   pins : OUT_BASE 1, SIDE_PIN 3, SIDE_EN, INIT_OUT = RES# high,
+//          INIT_OE = all four                           -> PINCTRL 0x0F401C01
+//   shift: OUT left, START_PC = 26                      -> SHIFTCTRL 0x00001A01
+// Origin 26: fits with uart_tx + uart_rx (0..17) or manchester_tx (7..19).
+// =============================================================================
+.program   oled_spi
+.side_set  1
+.origin    26
+.clkdiv    10 0
+.pinctrl   0x0F401C01
+.shiftctrl 0x00001A01
+
+next:   PULL block       side 0     // next word; SCLK idles low
+        OUT  pins, 4     side 0     // DC = [31], RES# = [29] (SCLK stays low)
+        SET  y, 7        side 0
+bit:    OUT  pins, 1     side 0     // SDIN = next bit while SCLK is low
+        JMP  y--, bit    side 1     // SCLK high: the display takes the bit
+        JMP  next        side 0

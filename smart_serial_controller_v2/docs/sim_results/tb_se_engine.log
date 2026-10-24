@@ -1,0 +1,12 @@
+A: reset values and registers
+B: TX FIFO, PULL block / noblock
+C: SET, JMP conditions
+D: OUT / IN shifting
+E: pins, OD, side-set
+F: PUSH, RX levels, overflow
+G: CRC
+H: delays, side-set, divider, WAIT, EXEC, RESTART
+I: ni_* ports
+J: programs/uart_tx.hex at 115200 baud
+  measured bit time 8680.0 ns (ideal 8680.6)
+ALL 257 CHECKS PASSED

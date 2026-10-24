@@ -1,0 +1,7 @@
+(0,0): 50000 clocks, 18924 with flits out, 27397 with a locked output, 0 mismatches
+(1,0): 50000 clocks, 19924 with flits out, 32421 with a locked output, 0 mismatches
+(2,0): 50000 clocks, 25690 with flits out, 29815 with a locked output, 0 mismatches
+(0,1): 50000 clocks, 19106 with flits out, 33137 with a locked output, 0 mismatches
+(1,1): 50000 clocks, 23611 with flits out, 31775 with a locked output, 0 mismatches
+(2,1): 50000 clocks, 28139 with flits out, 33693 with a locked output, 0 mismatches
+ALL 18 CHECKS PASSED

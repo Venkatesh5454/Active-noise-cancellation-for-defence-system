@@ -1,0 +1,55 @@
+==============================================================
+ Smart Serial Controller v2 - system test (Way 2 hardware path)
+==============================================================
+[1] registers
+    ok    ID (v1 block, version 2) = 0x53534302
+    ok    VERSION = 0x20000
+    ok    v1 SCRATCH register = 0xcafef00d
+    ok    PIN_SEL[JA] = UART after reset = 0x1
+    ok    PIN_SEL[JB] = SPI after reset = 0x2
+    ok    PIN_SEL[JC] = I2C after reset = 0x3
+    ok    PIN_SEL[JD] = OFF after reset = 0x0
+    ok    OLED supplies off after reset = 0x3
+    ok    TIME_US counts microseconds
+[2] slide 17, flow A: PC -> UART NI -> SPI flash -> PC
+    ok    PC got 3 reply bytes
+    ok    flash ID through the NoC = 20 BA 19 = 0x20ba19
+    ok    NI_STAT[UART]: 1 packet out, 1 in = 0x10001
+    ok    NI_STAT[SPI]: 1 packet in, 1 out = 0x10001
+[3] slides 18-20, flow B: hub -> I2C -> hub -> DMA -> DDR, 1 IRQ per 32
+    ok    batch interrupt arrived
+    measured: 0 APB accesses and 1 interrupt(s) for 32 readings
+    ok    CPU made 0 bus accesses during the 32 readings = 0x0
+    ok    exactly 1 interrupt for 32 readings = 0x1
+    ok    INT2_STATUS.DMA_BATCH set
+    ok    DMA COUNT >= 32
+    ok    32 records: ts every 200 us, source 3, len 2, seq 1..32, 0C 80 = 0x20
+    first record: timestamp 770 us, temperature 0x0C80 = 25.00 C
+    ok    IRQ line low after W1C
+[4] flow A while flow B was running
+    ok    flash ID during the hub traffic = 20 BA 19 = 0x20ba19
+[5] slide 14: JD switches from the SPI engine to SM0 (UART program)
+    ok    programs/uart_tx.hex loaded
+    ok    JD now shows the SPI engine = 0x2
+    ok    SPI frame visible on JD (CS# low)
+    ok    switch is waiting while the SPI frame runs
+    ok    JD now driven by SM0 = 0x4
+    ok    the SPI frame had finished before the hand-over
+    SW_CYCLES[JD] = 39325 clocks (waited for the SPI frame)
+    ok    SW_CYCLES counts the wait for the idle SPI engine
+    ok    PC still got all 40 flash bytes
+    ok    slide-13 program sends 'A' 'B' on JD2 at 115200 baud
+    SW_EDGE[JD] = 386455 clocks
+    switch time from an idle source: 2 clocks
+    ok    switching from an idle source takes a few clocks
+[6] protocol conversion: PC UART -> NoC -> SM0 UART on JD
+    ok    "Hi!" from the PC came out of SM0 on JD
+    ok    NI_STAT[SE] counted the packet
+[7] v1 path: CPU reads the TMP2 itself (slide 20, left side)
+    ok    v1-style read gives 0x0C80 = 0xc80
+    measured v1 style: 10 APB accesses and 2 interrupts for 1 reading
+    ok    v1 style costs ~10-20 accesses + 2 IRQs per reading
+    ok    AXI memory model saw no protocol or address errors
+==============================================================
+ALL 36 CHECKS PASSED
+==============================================================

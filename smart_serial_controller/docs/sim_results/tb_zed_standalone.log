@@ -1,0 +1,33 @@
+### tb_zed_standalone: the complete Way 1 ZedBoard image
+==============================================================
+ Way 1 (FPGA only) - full ZedBoard image simulation
+==============================================================
+    ok    terminal printed "Smart Serial Controller"
+    ok    terminal printed "t = temperature"
+    ok    terminal printed "Temp = +25.0000 C"
+    ok    terminal printed "Flash ID = 20 BA 19"
+    ok    terminal printed "Temp = -25.0000 C"
+    ok    terminal printed "Temp = +3.0625 C"
+    ok    terminal printed "No ACK from PmodTMP2"
+    ok    terminal printed "x"
+
+----------------- terminal session -----------------
+
+Smart Serial Controller - Way 1 bring-up
+  t = temperature (PmodTMP2 on JC)
+  f = flash JEDEC ID (PmodSF3 on JB)
+> t
+Temp = +25.0000 C
+> f
+Flash ID = 20 BA 19
+> t
+Temp = -25.0000 C
+> t
+Temp = +3.0625 C
+> t
+No ACK from PmodTMP2 - check JC
+> x
+----------------------------------------------------
+==============================================================
+ ALL 10 CHECKS PASSED
+==============================================================

@@ -1,0 +1,88 @@
+// =============================================================================
+// i2c_master.se  -  I2C master (100 kHz, 7-bit addresses, clock stretching)
+// -----------------------------------------------------------------------------
+// Made for the PmodTMP2 on JC: pin 2 = SCL, pin 3 = SDA, both open drain
+// (OD_MASK = 1100: writing 0 pulls the line low, writing 1 lets it go and
+// the pull-up makes it high).  SCL is the side-set pin, SDA is the OUT, SET,
+// IN and JMP pin.
+//
+// One TX word = one byte on the bus (OUT shifts left, MSB first):
+//   [31]    START  : send START (from idle) or a repeated START first
+//   [30]    STOP   : send STOP after this byte
+//   [29:22] BYTE   : the byte to send; 0xFF for a read (SDA released)
+//   [21]    9TH    : the 9th (ACK) bit we drive: 1 for a write (released,
+//                    so the slave can ACK); for a read 0 = ACK, 1 = NACK
+//   [20:0]  0
+// One RX word per byte: [8:1] = the byte seen on SDA (the read data, or
+// our own written byte read back), [0] = the 9th bit seen on SDA
+// (0 = ACK, 1 = NACK), [31:9] = 0.
+//
+// PmodTMP2 temperature read (address 0x4B) = 5 words:
+//   0x80000000 | 0x96<<22 | 1<<21  START, address + write  -> RX 0x12C (ACK)
+//   0x00<<22 | 1<<21                register pointer 0x00   -> RX 0x000
+//   0x80000000 | 0x97<<22 | 1<<21  repeated START, + read  -> RX 0x12E
+//   0xFF<<22                        read byte 1, ACK        -> RX 0x018 (0x0C)
+//   0x40000000 | 0xFF<<22 | 1<<21  read byte 2, NACK, STOP -> RX 0x101 (0x80)
+//
+// NACK: if the 9th bit is high (the slave did not answer, or we sent NACK)
+// the byte is pushed (bit 0 = 1) and STOP is sent at once, like the v1
+// engine.  If that word had no STOP flag the transaction was cut short, so
+// the following TX words are thrown away (no RX words) up to and including
+// the next word with the STOP flag.  So always end a transaction with a
+// STOP word, and end a read with "NACK + STOP".
+// The first word after a STOP always starts with START (bit 31 is ignored).
+// While the SM waits for the next word inside a transaction it holds SCL
+// low (legal); between transactions both lines are released.
+// Clock stretching: after releasing SCL the SM WAITs until SCL is really
+// high, so a slave may hold SCL low as long as it likes.  (Single master:
+// arbitration is not checked.)
+//
+// Timing (1 tick = 1.25 us): every bit is 8 ticks = 10 us = 100 kHz:
+//   SCL low 4 ticks (5 us >= 4.7), SDA changes 1 tick after SCL falls,
+//   SCL high 4 ticks (5 us >= 4.0), SDA sampled 2 ticks after SCL rises.
+//   START hold 5 us, repeated-START set-up 6.25 us, STOP set-up 5 us.
+//   clock: 100 MHz / 125 = 800 kHz ticks
+//   pins : OUT/SET/IN/JMP pin 3, SET_COUNT 1, SIDE_PIN 2, SIDE_EN,
+//          OD_MASK 1100, INIT_OE 0 (both lines released) -> PINCTRL 0x000C7B1F
+//   shift: OUT left, IN left, START_PC = 0              -> SHIFTCTRL 0x00000003
+// The program uses all 32 words, so it is loaded alone (origin 0).
+// =============================================================================
+.program   i2c_master
+.side_set  1
+.origin    0
+.clkdiv    125 0
+.pinctrl   0x000C7B1F
+.shiftctrl 0x00000003
+
+idle:   PULL block       side 1     // bus free (SCL released): wait for a word
+        OUT  null, 1     side 1     // from idle a START is always sent
+        JMP  start       side 1
+hold:   PULL block       side 0     // inside a transaction: SCL held low
+        OUT  x, 1        side 0     // [31] START?
+        JMP  !x, byte    side 0
+        SET  pins, 1     side 0 [2] // repeated START: release SDA while SCL is low
+start:  WAIT 1, pin 2    side 1 [3] // release SCL, wait until it is really high
+        SET  pins, 0     side 1 [3] // START: SDA falls while SCL is high
+byte:   OUT  x, 1        side 0 [1] // SCL low; X = [30] STOP flag
+        SET  y, 7        side 0
+bit:    OUT  pins, 1     side 0 [2] // SDA = next bit (MSB first) while SCL is low
+        WAIT 1, pin 2    side 1     // release SCL, wait for it (clock stretching)
+        IN   pins, 1     side 1 [1] // sample SDA in the middle of SCL high
+        JMP  y--, bit    side 0     // SCL low
+        OUT  pins, 1     side 0 [2] // 9th bit: release (write) or ACK/NACK (read)
+        WAIT 1, pin 2    side 1     // release SCL, wait (the slave may stretch here)
+        IN   pins, 1     side 1     // sample the ACK bit
+        JMP  pin, nack   side 1     // SDA high = NACK
+        PUSH block       side 0     // SCL low; RX word = {byte, ACK bit}
+        JMP  !x, hold    side 0     // no STOP flag: keep the bus
+stop:   SET  pins, 0     side 0 [2] // SDA low while SCL is low
+        WAIT 1, pin 2    side 1 [2] // release SCL, wait until it is high
+        SET  pins, 1     side 1 [3] // STOP: SDA rises while SCL is high (+ bus free time)
+        JMP  x--, idle   side 1     // X = 1: normal end of the transaction
+skip:   PULL block       side 1     // X = 0: NACK in the middle of a transaction:
+        OUT  null, 1     side 1     //   throw words away up to the one with STOP
+        OUT  x, 1        side 1
+        JMP  !x, skip    side 1
+        JMP  idle        side 1
+nack:   PUSH block       side 0     // SCL low; RX word with bit 0 = 1
+        JMP  stop        side 0

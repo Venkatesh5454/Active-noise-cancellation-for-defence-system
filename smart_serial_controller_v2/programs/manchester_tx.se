@@ -1,0 +1,55 @@
+// =============================================================================
+// manchester_tx.se  -  Manchester (IEEE 802.3) transmitter, one byte per frame
+// -----------------------------------------------------------------------------
+// The "new protocol" of the serial engine (slide 24).  Manchester code puts
+// a transition in the middle of every bit, so the receiver can recover the
+// clock from the data itself.  IEEE 802.3 convention:
+//     bit 1 = low -> high in the middle      bit 0 = high -> low
+//
+// Frame (one per TX word; the line idles LOW):
+//     idle low ... | start bit 1 | d0 d1 .. d7 (LSB first) | idle low
+//   The start bit is the sync: after a long low idle, its rising middle
+//   edge is the first edge the receiver sees, so it locks on it.  At least
+//   17 ticks of idle low (about 1 bit) separate two frames.
+//
+//   TX word: the byte in bits [7:0] (OUT shifts right = LSB first; ni_se
+//   puts NoC bytes there too); the other bits are ignored.
+//
+// How it works: a bit is 16 ticks, 8 per half.  The line is the side-set
+// pin, and every instruction drives it, so there is one code block per
+// bit value:
+//   do_1: NOP side 0 [7]   first half low (8 ticks)
+//         OUT x,1 side 1 [5] + JMP y-- + JMP x--   second half high (8 ticks),
+//         meanwhile fetch the next bit into X and choose the next block
+//   do_0: the same with the levels swapped.
+// sel0 / sel1 fall through into the block that follows them, so the
+// branch costs exactly one tick in both cases.  Y counts the 9 bits.
+//
+//   clock: 100 MHz / (62 + 128/256) = 1.6 MHz ticks -> 100 kbit/s
+//   pins : TX = pin 1 (side-set), SIDE_EN, INIT_OUT 0 (idle low),
+//          INIT_OE = pin 1                              -> PINCTRL 0x02001400
+//   shift: OUT right, START_PC = 7                      -> SHIFTCTRL 0x00000700
+// Origin 7: manchester_tx (7..19) + manchester_rx (20..31) fit together and
+// leave uart_tx (0..6) in place.  Run TX on SM0 and RX on SM1; SE_LOOP
+// (0xA20 bit 0) connects SM0 pin 1 to SM1 pin 2 inside the chip.
+// =============================================================================
+.program   manchester_tx
+.side_set  1
+.origin    7
+.clkdiv    62 128
+.pinctrl   0x02001400
+.shiftctrl 0x00000700
+
+frame:  PULL block       side 0      // wait for a byte; the line idles low
+        SET  y, 8        side 0 [13] // start bit + 8 data bits; idle gap
+        SET  x, 1        side 0      // the start bit is a 1
+sel0:   JMP  !x, do_0    side 0      // (end of a 0 bit) next bit 0 -> do_0
+do_1:   NOP              side 0 [7]  // bit 1, first half: low
+        OUT  x, 1        side 1 [5]  // second half: high; fetch the next bit
+        JMP  y--, sel1   side 1
+        JMP  frame       side 1      // all 9 bits sent
+sel1:   JMP  x--, do_1   side 1      // (end of a 1 bit) next bit 1 -> do_1
+do_0:   NOP              side 1 [7]  // bit 0, first half: high
+        OUT  x, 1        side 0 [5]  // second half: low; fetch the next bit
+        JMP  y--, sel0   side 0
+        JMP  frame       side 0      // all 9 bits sent
