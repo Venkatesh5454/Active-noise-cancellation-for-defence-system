@@ -40,6 +40,8 @@ run_tb tb_ni_uart  sim/unit/tb_ni_uart.v rtl/noc/ni_uart.v rtl/noc/noc_pkt_tx.v 
                    rtl/v1/ssc_sync_filter.v sim/models/tb_uart_term.v
 
 run_tb tb_noc_router sim/unit/tb_noc_router.v rtl/noc/noc_router.v
+run_tb tb_noc_router_equiv sim/unit/tb_noc_router_equiv.v rtl/noc/noc_router.v \
+                   sim/models/noc_router_ref.v
 run_tb tb_noc_mesh sim/unit/tb_noc_mesh.v rtl/noc/noc_mesh.v rtl/noc/noc_router.v \
                    rtl/noc/noc_pkt_tx.v rtl/noc/noc_pkt_rx.v
 run_tb tb_se_engine sim/unit/tb_se_engine.v rtl/se/se_engine.v rtl/se/se_sm.v rtl/v1/ssc_fifo.v

@@ -40,6 +40,19 @@
 // later, it is a register).
 //
 // Design choices:
+//   * Timing (100 MHz on the Zynq-7020): the arbiters do not read the FIFO
+//     memory.  Each input keeps a copy of its front flit in a register
+//     (front_q), together with the output port it wants as a one-hot vector
+//     (froute_q) that is worked out when the flit is WRITTEN.  So the
+//     longest path starts at a flip-flop: front register -> request ->
+//     arbiter -> output mux -> output register.  The front register always
+//     holds exactly what the FIFO front would be (it is reloaded from
+//     mem[rptr+1] or straight from in_flit when the front leaves), so the
+//     behaviour clock by clock is the same as reading mem[rptr] directly.
+//     For the same reason "input p owns an output" (busy_q) and "FIFO p is
+//     not empty" (ne_q) are registers, and the arbiters work on one-hot
+//     vectors (the owner, the round-robin mask and the grant), so there is
+//     no adder or comparator between the registers and the grant.
 //   * in_credit, out_valid and out_flit are registers: there is no
 //     combinational path from one router to the next.  The credit loop is
 //     then 4 clocks (send, write, pop, credit), so DEPTH = 4 is exactly
@@ -105,24 +118,32 @@ module noc_router #(
     endgenerate
 
     // ------------------------------------------------------------------
-    // Round-robin pick: the first set bit of cand, starting after "last"
+    // One-hot helpers for the round-robin arbiters
     // ------------------------------------------------------------------
-    function [2:0] rr_pick;
-        input [4:0] cand;
-        input [2:0] last;
-        integer   k;
-        reg [2:0] idx;
-        reg       found;
+    // the lowest set bit of x (all zero if x is zero)
+    function [NP-1:0] first_one;
+        input [NP-1:0] x;
+        integer k;
+        reg     seen;
         begin
-            rr_pick = 3'd0;
-            found   = 1'b0;
-            idx     = (last >= 3'd4) ? 3'd0 : last + 3'd1;
+            seen = 1'b0;
             for (k = 0; k < NP; k = k + 1) begin
-                if (!found && cand[idx]) begin
-                    rr_pick = idx;
-                    found   = 1'b1;
-                end
-                idx = (idx >= 3'd4) ? 3'd0 : idx + 3'd1;
+                first_one[k] = x[k] && !seen;
+                seen         = seen || x[k];
+            end
+        end
+    endfunction
+
+    // the bits above the set bit of the one-hot x
+    function [NP-1:0] above;
+        input [NP-1:0] x;
+        integer k;
+        reg     seen;
+        begin
+            seen = 1'b0;
+            for (k = 0; k < NP; k = k + 1) begin
+                above[k] = seen;
+                seen     = seen || x[k];
             end
         end
     endfunction
@@ -134,12 +155,11 @@ module noc_router #(
     wire [NP*FW-1:0] f_front;    // flit at the front of FIFO p
     wire [NP-1:0]    f_head;     // that flit is a HEAD or a SINGLE
     wire [NP-1:0]    f_prio;     // its prio bit
-    wire [3*NP-1:0]  f_route;    // the output its dest wants
-    wire [NP-1:0]    f_busy;     // input p owns a (locked) output
+    wire [NP*NP-1:0] f_roh;      // the output its dest wants, one-hot (input p at [NP*p +: NP])
+    wire [NP-1:0]    f_rdy;      // input p has a HEAD/SINGLE at the front and owns nothing
     wire [NP-1:0]    o_locked;   // output o is locked to an input
-    wire [3*NP-1:0]  o_owner;    // ... to this input
     wire [NP-1:0]    o_go;       // output o sends a flit this clock
-    wire [3*NP-1:0]  o_sel;      // ... taken from this input
+    wire [NP*NP-1:0] o_sel;      // ... taken from this input (one-hot, output o at [NP*o +: NP])
 
     wire [8*NP-1:0]  dbg_level;  // FIFO level per input   (testbench only)
     wire [8*NP-1:0]  dbg_cred;   // credits per output     (testbench only)
@@ -149,57 +169,98 @@ module noc_router #(
     // ------------------------------------------------------------------
     generate
         for (p = 0; p < NP; p = p + 1) begin : g_in
-            localparam [2:0] PI = p;
-
-            reg  [FW-1:0]  mem [0:DEPTH-1];
+            reg  [FW-1:0]  mem  [0:DEPTH-1];
+            reg  [NP-1:0]  rmem [0:DEPTH-1]; // one-hot route of each stored flit
             reg  [AW-1:0]  wptr, rptr;
             reg  [CW-1:0]  cnt;          // flits in the FIFO (0 .. DEPTH)
+            reg            ne_q;         // cnt != 0
             reg            cr;           // in_credit register
-            wire [FW-1:0]  front = mem[rptr];
-            wire [IDW-1:0] dest  = front[DEST_LSB +: IDW];
-            wire [1:0]     kind  = front[FW-1:FW-2];
+            reg  [FW-1:0]  front_q;      // copy of mem[rptr]: the front flit
+            reg  [NP-1:0]  froute_q;     // ... and the output it wants (one-hot)
+            wire [FW-1:0]  fin   = in_flit[FW*p +: FW];
+            wire [IDW-1:0] idest = fin[DEST_LSB +: IDW];
+            wire [NP-1:0]  iroute = 5'b00001 << rtab[3*idest +: 3];   // route of the arriving flit
+            wire [AW-1:0]  rnext = (rptr == LAST) ? {AW{1'b0}} : rptr + 1'b1;
+            wire [1:0]     kind  = front_q[FW-1:FW-2];
             wire           wr    = in_valid[p] && (cnt != FULL);
-            wire [NP-1:0]  own;          // output q is locked to this input
+            reg            busy_q;       // an output is locked to this input
             wire [NP-1:0]  take;         // output q takes our front flit
+            wire [NP-1:0]  lock_now;     // output q locks to us this clock
+            wire [NP-1:0]  free_now;     // output q that we own unlocks this clock
             wire           drop;
             wire           pop;
 
             for (q = 0; q < NP; q = q + 1) begin : g_m
-                assign own[q]  = o_locked[q] && (o_owner[3*q +: 3] == PI);
-                assign take[q] = o_go[q] && (o_sel[3*q +: 3] == PI);
+                assign take[q]     = o_go[q] && o_sel[NP*q + p];
+                assign lock_now[q] = take[q] && !o_locked[q] && (kind == K_HEAD);
+                assign free_now[q] = take[q] &&  o_locked[q] &&
+                                     (kind == K_TAIL || kind == K_SINGLE);
             end
 
-            assign f_ne[p]            = (cnt != {CW{1'b0}});
-            assign f_front[FW*p +: FW] = front;
-            assign f_head[p]          = (kind == K_HEAD) || (kind == K_SINGLE);
-            assign f_prio[p]          = front[PRIO_BIT];
-            assign f_route[3*p +: 3]  = rtab[3*dest +: 3];
-            assign f_busy[p]          = |own;
+            assign f_ne[p]             = ne_q;
+            assign f_front[FW*p +: FW] = front_q;
+            assign f_head[p]           = (kind == K_HEAD) || (kind == K_SINGLE);
+            assign f_prio[p]           = front_q[PRIO_BIT];
+            assign f_roh[NP*p +: NP]   = froute_q;
+            assign f_rdy[p]            = ne_q && f_head[p] && !busy_q;
 
             // stray BODY/TAIL at an idle input: throw it away
-            assign drop = f_ne[p] && !f_head[p] && !f_busy[p];
+            assign drop = ne_q && !f_head[p] && !busy_q;
             assign pop  = drop || (|take);
 
             // FIFO memory (no reset, so it can be distributed RAM)
             always @(posedge clk) begin
-                if (wr) mem[wptr] <= in_flit[FW*p +: FW];
+                if (wr) begin
+                    mem[wptr]  <= fin;
+                    rmem[wptr] <= iroute;
+                end
             end
 
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin
-                    wptr <= {AW{1'b0}};
-                    rptr <= {AW{1'b0}};
-                    cnt  <= {CW{1'b0}};
-                    cr   <= 1'b0;
+                    wptr     <= {AW{1'b0}};
+                    rptr     <= {AW{1'b0}};
+                    cnt      <= {CW{1'b0}};
+                    ne_q     <= 1'b0;
+                    cr       <= 1'b0;
+                    busy_q   <= 1'b0;
+                    front_q  <= {FW{1'b0}};
+                    froute_q <= {NP{1'b0}};
                 end else begin
                     if (wr)  wptr <= (wptr == LAST) ? {AW{1'b0}} : wptr + 1'b1;
-                    if (pop) rptr <= (rptr == LAST) ? {AW{1'b0}} : rptr + 1'b1;
+                    if (pop) rptr <= rnext;
                     case ({wr, pop})
-                        2'b10:   cnt <= cnt + 1'b1;
-                        2'b01:   cnt <= cnt - 1'b1;
-                        default: cnt <= cnt;
+                        2'b10: begin
+                            cnt  <= cnt + 1'b1;
+                            ne_q <= 1'b1;
+                        end
+                        2'b01: begin
+                            cnt  <= cnt - 1'b1;
+                            ne_q <= (cnt != {{(CW-1){1'b0}}, 1'b1});
+                        end
+                        default: ;
                     endcase
                     cr <= pop;               // one credit per flit that left
+
+                    // the same lock events as the output side: a HEAD locks
+                    // an output to us, our TAIL (or SINGLE) unlocks it
+                    if (|lock_now)      busy_q <= 1'b1;
+                    else if (|free_now) busy_q <= 1'b0;
+
+                    // keep front_q = mem[rptr] for the next clock
+                    if (pop) begin
+                        // the next flit: just arriving (FIFO had 1 flit) or already stored
+                        if (wr && (wptr == rnext)) begin
+                            front_q  <= fin;
+                            froute_q <= iroute;
+                        end else begin
+                            front_q  <= mem[rnext];
+                            froute_q <= rmem[rnext];
+                        end
+                    end else if (wr && !ne_q) begin
+                        front_q  <= fin;     // first flit into an empty FIFO
+                        froute_q <= iroute;
+                    end
                 end
             end
 
@@ -213,45 +274,43 @@ module noc_router #(
     // ------------------------------------------------------------------
     generate
         for (p = 0; p < NP; p = p + 1) begin : g_out
-            localparam [2:0] OI = p;
-
             reg           locked;        // in the middle of a packet
-            reg  [2:0]    owner;         // input that owns this output
-            reg  [2:0]    last;          // last input granted (round-robin)
+            reg  [NP-1:0] owner;         // input that owns this output (one-hot)
+            reg  [NP-1:0] after;         // round-robin: the inputs after the last winner
             reg  [CW-1:0] cred;          // free slots downstream
             reg           ovalid;
             reg  [FW-1:0] oflit;
             reg  [FW-1:0] flit;          // flit chosen this clock
             wire [NP-1:0] req;           // free inputs whose head wants us
+            integer       k;
 
             for (q = 0; q < NP; q = q + 1) begin : g_r
-                assign req[q] = f_ne[q] && f_head[q] && !f_busy[q] &&
-                                (f_route[3*q +: 3] == OI);
+                assign req[q] = f_rdy[q] && f_roh[NP*q + p];
             end
 
-            // urgent requests first, then round-robin among equals
+            // urgent requests first, then round-robin among equals: the
+            // first candidate after the last winner, else the first one
             wire [NP-1:0] req_hi = req & f_prio;
             wire [NP-1:0] cand   = (|req_hi) ? req_hi : req;
-            wire [2:0]    sel    = locked ? owner : rr_pick(cand, last);
-            wire          have   = locked ? f_ne[owner] : (|cand);
+            wire [NP-1:0] cand_a = cand & after;
+            wire [NP-1:0] grant  = first_one((|cand_a) ? cand_a : cand);
+            wire [NP-1:0] next_a = above(grant);                     // mask after this winner
+            wire [NP-1:0] sel    = locked ? owner : grant;           // one-hot
+            wire          have   = locked ? |(owner & f_ne) : (|cand);
             wire          go     = have && (cred != {CW{1'b0}});
             wire [1:0]    kind   = flit[FW-1:FW-2];
 
             always @(*) begin
-                case (sel)
-                    3'd0:    flit = f_front[0*FW +: FW];
-                    3'd1:    flit = f_front[1*FW +: FW];
-                    3'd2:    flit = f_front[2*FW +: FW];
-                    3'd3:    flit = f_front[3*FW +: FW];
-                    default: flit = f_front[4*FW +: FW];
-                endcase
+                flit = {FW{1'b0}};
+                for (k = 0; k < NP; k = k + 1)
+                    if (sel[k]) flit = flit | f_front[FW*k +: FW];
             end
 
             always @(posedge clk or negedge rst_n) begin
                 if (!rst_n) begin
                     locked <= 1'b0;
-                    owner  <= 3'd0;
-                    last   <= 3'd4;          // so input 0 is looked at first
+                    owner  <= {NP{1'b0}};
+                    after  <= {NP{1'b0}};    // so input 0 is looked at first
                     cred   <= FULL;
                     ovalid <= 1'b0;
                     oflit  <= {FW{1'b0}};
@@ -269,10 +328,10 @@ module noc_router #(
                     // wormhole lock
                     if (go) begin
                         if (!locked) begin
-                            last <= sel;
+                            after <= next_a;
                             if (kind == K_HEAD) begin
                                 locked <= 1'b1;
-                                owner  <= sel;
+                                owner  <= grant;
                             end
                         end else if (kind == K_TAIL || kind == K_SINGLE) begin
                             locked <= 1'b0;
@@ -282,9 +341,8 @@ module noc_router #(
             end
 
             assign o_locked[p]          = locked;
-            assign o_owner[3*p +: 3]    = owner;
             assign o_go[p]              = go;
-            assign o_sel[3*p +: 3]      = sel;
+            assign o_sel[NP*p +: NP]    = sel;
             assign out_valid[p]         = ovalid;
             assign out_flit[FW*p +: FW] = oflit;
             assign dbg_cred[8*p +: 8]   = {{(8-CW){1'b0}}, cred};

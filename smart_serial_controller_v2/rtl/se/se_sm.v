@@ -211,9 +211,16 @@ module se_sm (
     end
 
     // ---------------- shifting ----------------
-    // mask with the low n bits set (n = 1..32)
-    wire [31:0] mask_n = nbits[5] ? 32'hFFFF_FFFF : ((32'd1 << nbits[4:0]) - 32'd1);
-    wire [5:0]  n_inv  = 6'd32 - nbits;                 // 32 - n (0..31)
+    // mask with the low n bits set (n = 1..32).  Built bit by bit
+    // (bit i = i < n) instead of (1 << n) - 1, so there is no 32-bit
+    // subtractor between the program memory and the shift registers.
+    reg  [31:0] mask_n;
+    integer     mi;
+    always @(*) begin
+        for (mi = 0; mi < 32; mi = mi + 1)
+            mask_n[mi] = (val == 5'd0) || (mi < val);
+    end
+    wire [5:0]  n_inv  = {1'b0, 5'd0 - val};            // 32 - n (0..31)
 
     // IN: rotate the pins so bit j = pin (IN_BASE + j) mod 4, repeat 8 times
     wire [3:0]  in_rot = (in_base == 2'd0) ? pin_in :

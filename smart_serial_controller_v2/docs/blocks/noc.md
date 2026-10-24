@@ -94,6 +94,14 @@ lock, a credit counter and an output register. Any input can reach any
 output through a 5 × 5 crossbar (the multiplexer in front of each output
 register).
 
+For timing (100 MHz on the Zynq-7020), each input also keeps a **register
+copy of its front flit** (`front_q`) and of the output that flit wants, as a
+one-hot vector (`froute_q`, worked out when the flit is *written* and stored
+next to it in `rmem`). So the arbiters never read the FIFO memory or the
+route table in the critical clock. Behaviourally this is exactly a
+first-word-fall-through FIFO: `front_q` always equals the flit at the front
+(section 8, choice 13, and [../TIMING.md](../TIMING.md)).
+
 ### 2.3 A node and its helpers
 
 ```
@@ -347,8 +355,12 @@ HEAD/SINGLE that wants this output:
 2. Among them it is **round-robin**: the search starts at the input after
    the one that won this output last time.
 
-Each output has its own pointer, shared by both priority classes. One input
-can be granted by at most one output (it has only one front flit), and
+Each output has its own pointer, shared by both priority classes. In the
+hardware the pointer is a one-hot mask `after` of the inputs that come after
+the last winner: the grant is the lowest candidate inside the mask, or, if
+there is none, the lowest candidate overall. That is the same order as a
+search that starts after the last winner and wraps around, without an adder
+or a comparator. One input can be granted by at most one output (it has only one front flit), and
 each output takes at most one flit per clock. The five outputs work in
 parallel, so up to 5 flits cross the router in one clock.
 
@@ -576,6 +588,17 @@ Other numbers from the tests:
     itself. A node that wants to send a packet whose length it does not know
     yet must buffer the bytes first, because the length is in the header
     (the UART NI and the hub do this).
+13. **Timing: nothing slow in front of the arbiters.** The first version
+    read the front flit from the FIFO's distributed RAM, looked its route up
+    and arbitrated, all in one clock; Vivado found that path 0.687 ns too
+    long for 100 MHz. Now the front flit, its one-hot route, "not empty"
+    (`ne_q`) and "this input owns an output" (`busy_q`) are registers, the
+    round-robin pointer is a one-hot mask, and the grant is one-hot, so the
+    path is register -> request -> grant -> output register. The behaviour
+    did not change by a single clock: `tb_noc_router_equiv` runs the old
+    router (`sim/models/noc_router_ref.v`) and the new one side by side and
+    compares every output at every clock. The cost is about 40 flip-flops
+    per used input (section 9).
 
 ## 9. Size
 
@@ -583,16 +606,21 @@ Yosys `synth_xilinx -flatten` (Zynq-7020 cells):
 
 | module | LUTs | flip-flops | other |
 |---|---|---|---|
-| `noc_router` (alone, all 5 ports) | 762 | 259 | 30 RAM32M (the five 4 × 34 FIFOs), 25 CARRY4, 142 MUXF7, 52 MUXF8 |
-| `noc_mesh` 3 × 2 (6 routers) | 3268 | 1160 | 120 RAM32M (20 used inputs), 160 CARRY4, 557 MUXF7, 188 MUXF8 |
+| `noc_router` (alone, all 5 ports) | 1239 | 485 | 35 RAM32M (the five 4 × 34 FIFOs and their 4 × 5 route memories), 10 CARRY4, 153 MUXF7, 56 MUXF8 |
+| `noc_mesh` 3 × 2 (6 routers) | 4263 | 1970 | 140 RAM32M (20 used inputs), 50 CARRY4, 915 MUXF7, 309 MUXF8 |
 | `noc_pkt_tx` | 232 | 116 | 13 CARRY4, 47 MUXF7 |
 | `noc_pkt_rx` | 40 | 19 | 6 RAM32M (the 4-flit buffer) |
 
-The whole 3 × 2 mesh is about 6 % of the 53 200 LUTs of the Zynq-7020 (7 %
-counting the LUTs used as RAM32M). In the mesh, the 10 boundary input FIFOs
-disappear, because their `in_valid` is tied to 0. Most of a router is the
-five 34-bit, 5-way multiplexers in front of the output registers and the
-five 34-bit output registers.
+The timing fix (choice 13) made the router larger: the first version was
+762 LUTs and 259 flip-flops alone, and the mesh 3268 LUTs and 1160
+flip-flops. The extra flip-flops are the front registers (34-bit flit,
+5-bit route and two flags per input); the extra LUTs are mostly the
+multiplexers that reload them. The whole 3 × 2 mesh is now about 8 % of the
+53 200 LUTs of the Zynq-7020 (9 % counting the LUTs used as RAM32M). In the
+mesh, the 10 boundary input FIFOs disappear, because their `in_valid` is
+tied to 0. Most of a router is the five 34-bit, 5-way multiplexers in front
+of the output registers, the five 34-bit output registers and the front
+registers.
 
 Yosys also lists INV cells (one per flip-flop with an asynchronous
 active-low reset). Vivado uses a single inverter for `rst_n` instead.
@@ -648,7 +676,32 @@ T8: 2539 packets, 9339 flits through the main router
 ALL 1547 CHECKS PASSED
 ```
 
-### 10.3 `tb_noc_mesh.v`: the whole mesh with real helpers
+### 10.3 `tb_noc_router_equiv.v`: the fast router against the reference router
+
+The timing-optimised `noc_router` and the first, simple version
+(`sim/models/noc_router_ref.v`, simulation only) get exactly the same inputs,
+and `out_valid`, `out_flit` and `in_credit` of the two are compared at every
+clock. Six pairs run at once, one per router position of the 3 × 2 mesh,
+each with its own random stimulus in phases of 2000 clocks: "anything goes"
+(random valid and credit pulses, so FIFOs overrun, credit counters wrap and
+stray BODY/TAIL flits appear) and "like a real network" (senders obey the
+credits, a buffer model returns them, so outputs stay locked and FIFOs stay
+full), random kinds, dest 0..7, a random share of prio flits, and now and
+then a reset in mid-traffic. Per position it checks: no mismatch, traffic
+flowed, outputs were locked.
+
+```
+(0,0): 50000 clocks, 18924 with flits out, 27397 with a locked output, 0 mismatches
+...
+(2,1): 50000 clocks, 28139 with flits out, 33693 with a locked output, 0 mismatches
+ALL 18 CHECKS PASSED
+```
+
+A longer run (`-P tb_noc_router_equiv.CYCLES=1000000`, 6 million clocks in
+all) also gives 0 mismatches, and a deliberately broken copy of the router
+(round-robin mask not updated) fails at once.
+
+### 10.4 `tb_noc_mesh.v`: the whole mesh with real helpers
 
 - **Part A** uses `noc_mesh` with the SPEC parameters and a real
   `noc_pkt_tx` / `noc_pkt_rx` at every node. Each node owns a list of
@@ -685,11 +738,11 @@ B: 4x4 mesh: 3200 packets, 12608 flits in 4620 clocks
 ALL 19 CHECKS PASSED
 ```
 
-### 10.4 How to run them and read the output
+### 10.5 How to run them and read the output
 
 ```
 cd smart_serial_controller_v2
-sh sim/run_unit.sh noc        # runs tb_noc_pkt, tb_noc_router and tb_noc_mesh
+sh sim/run_unit.sh noc        # runs tb_noc_pkt, tb_noc_router, tb_noc_router_equiv and tb_noc_mesh
 ```
 
 or one by hand:
@@ -702,8 +755,9 @@ vvp -n build/tb_noc_mesh.vvp
 
 `run_unit.sh` prints `### tb_noc_router` and then the last lines of each
 log (the full log is in `build/<name>.log`), and at the end
-`UNIT TESTS: 3 passed`. `tb_noc_pkt` and `tb_noc_router` take about 2 s;
-`tb_noc_mesh` takes about 1.5 minutes (it moves 5742 + 3200 packets).
+`UNIT TESTS: 4 passed`. `tb_noc_pkt` and `tb_noc_router` take about 2 s,
+`tb_noc_router_equiv` about 45 s, `tb_noc_mesh` about 1.5 minutes (it moves
+5742 + 3200 packets).
 
 - Lines starting with a letter (`R:`, `T1:`, `A1:`, `B:`) are measurements
   and summaries.

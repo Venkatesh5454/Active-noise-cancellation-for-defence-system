@@ -80,7 +80,7 @@ These are explained in the v1 project; v2 does not change their behaviour.
 |---|---|
 | `noc_pkt_tx` | turns "header + bytes" into flits: HEAD (type, dest, source, prio, length, tag, arg), BODY/TAIL with 4 bytes each, or one SINGLE flit. Keeps the credit counter, so it never sends into a full buffer |
 | `noc_pkt_rx` | the reverse: a 4-flit buffer, header fields for the node, then the payload one byte at a time; returns one credit per freed slot |
-| `noc_router` | 5-port router (local, N, E, S, W): input FIFOs, XY routing, wormhole lock, priority then round-robin arbitration, credit counters, registered outputs, 2 clocks per hop |
+| `noc_router` | 5-port router (local, N, E, S, W): input FIFOs (the front flit and its route kept in registers, for 100 MHz), XY routing, wormhole lock, priority then round-robin arbitration (one-hot), credit counters, registered outputs, 2 clocks per hop |
 | `noc_mesh` | W x H routers wired to their neighbours; boundary ports tied off |
 | `ni_uart` | node 3: PC bytes from the UART RX FIFO become packets (RAW, FRAME `[wlen][w][rlen]`, ADDRESSED); every payload byte that arrives goes to the UART TX FIFO |
 | `ni_spi` | node 4: runs an XFER_REQ on the SPI engine (CS low, write wlen, read rlen, CS high) and replies; DATA = one write frame |

@@ -21,7 +21,7 @@
 #                                    post-synthesis AND post-implementation)
 #                     sim_system     tb_ssc2_system   (Way 2, as the ARM sees it)
 #                     sim_board      tb_zed2_standalone (Way 1, inside view)
-#                     sim_xbar, sim_noc_router, sim_noc_mesh, sim_noc_pkt,
+#                     sim_xbar, sim_noc_router, sim_noc_equiv, sim_noc_mesh, sim_noc_pkt,
 #                     sim_se_engine, sim_se_programs, sim_ni_se, sim_ni_uart,
 #                     sim_ni_spi, sim_ni_i2c, sim_hub, sim_dma, sim_study
 #                   To run one: in the Sources window right-click the set
@@ -58,6 +58,9 @@ add_files -fileset constrs_1 -norecurse [list \
 
 update_compile_order -fileset sources_1
 
+# ---------------- implementation: physical optimisation for timing margin ----------------
+ssc2_impl_settings impl_1
+
 # ---------------- simulation sets ----------------
 # name  testbench  extra files (besides the models in sim/models)
 set sim_sets [list \
@@ -66,6 +69,7 @@ set sim_sets [list \
     sim_board       tb_zed2_standalone  [list sim/tb_zed2_standalone.v] \
     sim_xbar        tb_xbar             [list sim/unit/tb_xbar.v] \
     sim_noc_router  tb_noc_router       [list sim/unit/tb_noc_router.v] \
+    sim_noc_equiv   tb_noc_router_equiv [list sim/unit/tb_noc_router_equiv.v] \
     sim_noc_mesh    tb_noc_mesh         [list sim/unit/tb_noc_mesh.v] \
     sim_noc_pkt     tb_noc_pkt          [list sim/unit/tb_noc_pkt.v] \
     sim_se_engine   tb_se_engine        [list sim/unit/tb_se_engine.v] \

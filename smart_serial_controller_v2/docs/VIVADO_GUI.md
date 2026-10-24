@@ -115,7 +115,7 @@ In `build\gui\ssc2_gui.xpr` (or your fixed project):
 | **Run Synthesis** | Verilog -> netlist for `zed2_top_standalone` | "Synthesis Completed", no errors (warnings are normal) |
 | **Run Simulation -> Run Post-Synthesis Functional Simulation** | the synthesised netlist with `tb_zed2_gate` (sim_1 active) | `ALL 11 CHECKS PASSED` |
 | **Run Simulation -> Run Post-Synthesis Timing Simulation** | the same, with estimated gate delays | `ALL 11 CHECKS PASSED` |
-| **Run Implementation** | place and route | "Implementation Completed"; Open Implemented Design -> Report Timing Summary: WNS >= 0 |
+| **Run Implementation** | place and route (with physical optimisation after placement and after routing, set by the script) | "Implementation Completed"; Open Implemented Design -> Report Timing Summary: WNS >= 0 (if not: [TIMING.md](TIMING.md)) |
 | **Run Simulation -> Run Post-Implementation Functional / Timing Simulation** | the routed netlist with real delays | `ALL 11 CHECKS PASSED` |
 | **Generate Bitstream** | `zed2_top_standalone.bit` | then Open Hardware Manager -> Program Device |
 
@@ -127,7 +127,9 @@ Notes:
   wire delay of about 20 000 LUTs.
 - **Other testbenches:** in the Sources window, under Simulation Sources,
   right-click a simulation set (`sim_xbar`, `sim_system`, `sim_se_programs`,
-  ...) -> **Make Active**, then Run Behavioral Simulation. Switch back to
+  `sim_noc_equiv`, ...) -> **Make Active**, then Run Behavioral Simulation.
+  `sim_noc_equiv` (`tb_noc_router_equiv`) is the check of the timing fix:
+  the new router against the old one, clock by clock. Switch back to
   `sim_1` before a post-synthesis or post-implementation simulation.
 - To look at waveforms: after launching, type `log_wave -r /` and then
   `restart` and `run all` in the Tcl Console (the default run does not log
@@ -135,7 +137,9 @@ Notes:
 - Timing is normally proven by **static timing analysis** (Report Timing
   Summary after implementation, WNS >= 0 at 100 MHz) rather than by timing
   simulation. Post-implementation timing simulation is a cross-check that
-  the routed design still passes the same test.
+  the routed design still passes the same test. The first implementation
+  missed 100 MHz by 0.687 ns in the NoC router; the cause and the fix are
+  in [TIMING.md](TIMING.md).
 
 ## 5. Way 2 (ARM + FPGA)
 

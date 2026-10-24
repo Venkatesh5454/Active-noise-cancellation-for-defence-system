@@ -273,8 +273,13 @@ module dma_writer (
     end
 
     // ---------------- batch / time-out (ev_batch) ----------------
-    wire [31:0] pend_next  = pending + {31'd0, commit};
-    wire        batch_hit  = (batch != 8'd0) && (pend_next >= {24'd0, batch});
+    // batch_hit = (pending + commit >= BATCH).  Both comparisons are made
+    // from registers only and commit (which comes late in the clock, from
+    // the AXI B handshake) just picks one, so there is no 32-bit adder and
+    // comparator after it.  pending + 1 would wrap at FFFF_FFFF.
+    wire        ge_now     = (pending >= {24'd0, batch});
+    wire        ge_next    = (pending >= {24'd0, batch} - 32'd1) && (pending != 32'hFFFF_FFFF);
+    wire        batch_hit  = (batch != 8'd0) && (commit ? ge_next : ge_now);
     wire        tmo_hit    = ms_tick && (timeout != 16'd0) && (pending != 32'd0) &&
                              (age >= timeout - 16'd1);
 
@@ -289,7 +294,7 @@ module dma_writer (
             pending <= 32'd0;
             age     <= 16'd0;
         end else begin
-            pending <= pend_next;
+            if (commit) pending <= pending + 32'd1;
             if (pending == 32'd0)                    age <= 16'd0;  // timer starts at the first record
             else if (ms_tick && age != 16'hFFFF)     age <= age + 16'd1;
         end

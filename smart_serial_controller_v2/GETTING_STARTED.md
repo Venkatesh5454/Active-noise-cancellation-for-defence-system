@@ -2,7 +2,9 @@
 
 Follow these steps in order. Each step says what success looks like before
 you move on. [README.md](README.md) is the overview; the details are in
-`docs/`.
+`docs/`. The complete board guide (what to buy, jumpers, Pmods, every check)
+is [docs/ZEDBOARD_GUIDE.md](docs/ZEDBOARD_GUIDE.md); what the project proves
+(for your review) is [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md).
 
 | Step | What you do | Board needed? | Time |
 |---|---|---|---|
@@ -66,7 +68,7 @@ smart_serial_controller_v2\
    `tools\pc_frame.py`, which sends the slide-17 frames from the PC.
 5. **Optional, recommended for fast simulation:** WSL (Ubuntu) or Linux
    with `sudo apt install iverilog gtkwave yosys`. The Icarus scripts run
-   all 15 testbenches in about 15 minutes.
+   all 17 testbenches in about 15 minutes.
 6. **Optional:** a logic analyser (any FX2-based 8-channel one works with
    PulseView/sigrok) for JD.
 
@@ -81,12 +83,12 @@ Linux only: run the cable-driver installer once as root
 
 ```
 cd /mnt/c/ssc/smart_serial_controller_v2      (WSL)   or your Linux folder
-sh sim/run_unit.sh          # 13 unit testbenches, ~3 min
+sh sim/run_unit.sh          # 14 unit testbenches, ~4 min
 sh sim/run_system.sh        # the 2 system testbenches, ~10 min
 ```
 
 Success: every test prints `ALL n CHECKS PASSED`, then
-`UNIT TESTS: 13 passed` and `SYSTEM TESTS PASSED`.
+`UNIT TESTS: 14 passed` and `SYSTEM TESTS PASSED`.
 
 **Option B, Windows with Vivado only:** double-click
 **`windows\1_simulate.bat`**. It runs the system tests and the main unit
@@ -123,6 +125,7 @@ boot sequencer (`rtl/top/ssc2_boot.v`) does the set-up.
 Double-click **`windows\2_build_way1_fpga_only.bat`** (10-20 min).
 Success: `Way 1 build finished`, `worst setup slack (WNS)` >= 0, then
 `SUCCESS. Bitstream: build\standalone\zed2_top_standalone.bit`.
+WNS < 0: see [docs/TIMING.md](docs/TIMING.md).
 (Linux: `vivado -mode batch -source vivado/build_standalone.tcl`.)
 
 ### 4b. Prepare the board (power OFF)
@@ -254,7 +257,7 @@ se_demos.h, se_programs.h, oled_font.h`.
 | Vitis: `xtime_l.h` / `xiltimer.h` not found | create a *standalone* platform for `ps7_cortexa9_0`; the code picks the right header for your Vitis |
 | `se i2c` says no ACK but `temp` works | normal if JC is held by the I2C engine mid-transfer; run it again. `se i2c` uses SM0's open-drain program on JC at 100 kHz |
 | OLED stays dark | `se oled TEXT` powers it up (VDD, reset, charge pump, VBAT); check J18 jumper and that no other design drives the OLED pins |
-| Timing not met (WNS < 0) | open `timing_summary.rpt`; report the failing path (the design is meant for 100 MHz) |
+| Timing not met (WNS < 0) | the first version of the NoC router missed 100 MHz by 0.687 ns; this is fixed, see [docs/TIMING.md](docs/TIMING.md) (re-create the project so that Vivado uses the new files). If it still fails, that page says what to try and what to report |
 
 ---
 

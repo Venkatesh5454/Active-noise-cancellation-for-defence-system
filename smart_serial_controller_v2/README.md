@@ -27,7 +27,9 @@ A software-defined, autonomous serial controller for the ZedBoard
 ```
 
 **Start here: [GETTING_STARTED.md](GETTING_STARTED.md)** (install, simulate,
-build, run, step by step).
+build, run, step by step). For the review: **[docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md)**
+(what v2 proves, what improved, what it costs). On the board:
+**[docs/ZEDBOARD_GUIDE.md](docs/ZEDBOARD_GUIDE.md)**.
 
 ## What is in the box
 
@@ -37,7 +39,7 @@ build, run, step by step).
 | Way 1: FPGA only | `zed2_top_standalone`: a boot sequencer sets everything up; PC frames, sensor records into block RAM, switches drive the crossbar |
 | Way 2: ARM + FPGA | `zed2_top_ps` + block design (PS, controller, HP0) + the C console app in `sw/` |
 | Serial-engine programs | `programs/*.se`, assembler `tools/se_asm.py` |
-| Tests | 13 self-checking unit testbenches + 3 system testbenches (`sim/`), all passing; `tb_zed2_gate` also runs on the post-synthesis / post-implementation netlist |
+| Tests | 14 self-checking unit testbenches + 3 system testbenches (`sim/`), all passing; `tb_zed2_gate` also runs on the post-synthesis / post-implementation netlist; `tb_noc_router_equiv` checks the timing-optimised router against the reference router clock by clock |
 | NoC study | `noc_study/`: bus vs crossbar vs mesh at 4, 8, 16 nodes |
 | Scripts | `vivado/*.tcl`, double-click `windows/*.bat`, Icarus `sim/run_*.sh` |
 | Documentation | `docs/` (below), PDFs in `docs/pdf/` |
@@ -51,7 +53,8 @@ build, run, step by step).
 | protocols as programs (slides 12-13, 23) | UART, SPI and I2C programs match the v1 engines bit for bit; 115200 baud measured as 8680.0 ns per bit; Manchester with CRC works | `tb_se_programs` (69 checks) |
 | runtime pin switching (slide 14) | never mid-frame; 2 clocks (20 ns) from an idle engine | `tb_xbar` (1.2 M checks), `tb_ssc2_system` [5] |
 | NoC correctness (slide 23) | every packet once, unchanged, in order; no deadlock; 2 clocks per hop, 1 flit/clock streaming | `tb_noc_router`, `tb_noc_mesh` |
-| area (slide 22) | about 18.5k LUTs, 7.7k FFs (yosys estimate) = 35 % of the Zynq-7020 | `docs/MEASUREMENTS.md` |
+| area (slide 22) | Way 1 in Vivado (first run): 9 775 LUTs (18 %), 5 326 FFs (5 %), 0 BRAM; the full controller about 21k LUTs (yosys estimate, per module, before Vivado's trimming) | `docs/MEASUREMENTS.md` |
+| timing (100 MHz) | first Vivado run: WNS -0.687 ns in the NoC router; router, serial engine and DMA writer paths restructured (same behaviour, proven); re-run to confirm WNS >= 0 | `docs/TIMING.md` |
 | NoC scalability (slide 24) | the mesh loses on area and latency at 4-16 nodes; it matches the crossbar's throughput and its logic depth stays flat, so it gains only on clock speed at 16 nodes | `noc_study/README.md` |
 
 The board measurements (baud rate, SCL frequency, switch time, CPU load,
@@ -63,6 +66,9 @@ Vivado area and Fmax) are for you to take with the procedures in
 | file | what |
 |---|---|
 | [GETTING_STARTED.md](GETTING_STARTED.md) | step-by-step: tools, simulation, Way 1, Way 2, troubleshooting |
+| [docs/PROJECT_SUMMARY.md](docs/PROJECT_SUMMARY.md) | for the review: what the project proves (and what it does not), v1 vs v2, costs, how the output was verified, the Vivado numbers, likely questions |
+| [docs/ZEDBOARD_GUIDE.md](docs/ZEDBOARD_GUIDE.md) | the complete board guide: parts, jumpers, Pmods, programming, every check, measurements, troubleshooting |
+| [docs/TIMING.md](docs/TIMING.md) | the 100 MHz timing failure (WNS -0.687 ns in the NoC router), its cause, the fix and how it was proven not to change the behaviour |
 | [docs/CODE_WALKTHROUGH.md](docs/CODE_WALKTHROUGH.md) | every module explained, plus two end-to-end traces |
 | [docs/VERIFICATION.md](docs/VERIFICATION.md) | how to verify, and what correct output looks like (simulation and board) |
 | [docs/MEASUREMENTS.md](docs/MEASUREMENTS.md) | the six measurements of slide 24 |
@@ -76,7 +82,7 @@ Vivado area and Fmax) are for you to take with the procedures in
 
 ```
 # simulation (WSL / Linux, Icarus Verilog)
-sh sim/run_unit.sh                 # 13 unit tests, ~3 min
+sh sim/run_unit.sh                 # 14 unit tests, ~4 min
 sh sim/run_system.sh               # 3 system tests, ~10 min
 sh tools/build_programs.sh         # after editing programs/*.se
 

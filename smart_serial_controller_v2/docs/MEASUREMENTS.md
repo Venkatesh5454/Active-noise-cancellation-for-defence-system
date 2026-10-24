@@ -11,7 +11,7 @@ column when you have run it; keep the simulation column as the reference.
 | 2 | speed: 115200 baud, I2C 100 / 400 kHz, top SPI clock | 8680.0 ns per UART bit (115200.0 baud), SCL high/low 5 us (100 kHz) | |
 | 3 | switch time, request to first new edge | 2 clocks (20 ns) from an idle engine; a busy engine is waited for (39 325 clocks for the rest of an SPI frame) | |
 | 4 | CPU load per reading | v1: 10 accesses + 2 IRQs; v2: 0 accesses + 1/32 IRQ (`tb_ssc2_system`) | |
-| 5 | area per block | yosys estimate below | |
+| 5 | area per block | yosys estimate below; Vivado Way 1 (first run): 9 775 LUTs, 5 326 FFs, 0 BRAM | |
 | 6 | NoC scalability: bus vs crossbar vs NoC at 4, 8, 16 nodes | `noc_study/results.md` | |
 
 ---
@@ -110,35 +110,63 @@ section 5.1.
 
 | module (all instances) | count | LUTs | FFs |
 |---|---:|---:|---:|
-| noc_router (the 6 routers of the mesh) | 6 | 5539 | 1560 |
-| se_sm (state machines) | 2 | 2766 | 512 |
-| hub | 1 | 2096 | 1780 |
+| noc_router (the 6 routers of the mesh) | 6 | 8175 | 2910 |
+| se_sm (state machines) | 2 | 2620 | 512 |
+| hub | 1 | 2087 | 1780 |
 | noc_pkt_tx (packet senders in the nodes) | 5 | 1160 | 580 |
-| xbar | 1 | 1141 | 792 |
-| dma_writer | 1 | 1044 | 431 |
-| ssc_spi (v1) | 1 | 773 | 241 |
-| ssc2_core (glue, core registers, counters) | 1 | 655 | 409 |
-| se_engine (program memory, FIFOs, registers) | 1 | 515 | 166 |
-| ni_se | 1 | 514 | 184 |
-| ssc_i2c (v1) | 1 | 409 | 111 |
+| xbar | 1 | 1140 | 792 |
+| dma_writer | 1 | 1091 | 431 |
+| ssc_spi (v1) | 1 | 820 | 241 |
+| ssc2_core (glue, core registers, counters) | 1 | 645 | 409 |
+| ni_se | 1 | 516 | 184 |
+| se_engine (program memory, FIFOs, registers) | 1 | 508 | 166 |
+| ssc_i2c (v1) | 1 | 424 | 111 |
 | ssc_fifo (v1 FIFOs) | 10 | 404 | 106 |
 | noc_pkt_rx (packet receivers in the nodes) | 6 | 384 | 114 |
-| ssc_regbank (v1 registers) | 1 | 273 | 145 |
-| ni_i2c / ni_spi / ni_uart | 3 | 546 | 347 |
+| ssc_regbank (v1 registers) | 1 | 275 | 145 |
+| ni_i2c / ni_spi / ni_uart | 3 | 550 | 347 |
 | ssc_uart + baud generator (v1) | 2 | 174 | 78 |
 | time base, interrupts, synchronisers | 10 | 160 | 142 |
-| **total** | | **18553** | **7698** |
+| **total** | | **21133** | **9048** |
 
-That is 34.9 % of the Zynq-7020's 53 200 LUTs and 7.2 % of its 106 400
+That is 39.7 % of the Zynq-7020's 53 200 LUTs and 8.5 % of its 106 400
 flip-flops (yosys estimate, `build/area_yosys.txt`). Grouped by the v2
-blocks of slide 22: network (routers + packet helpers) about 7.1k LUTs,
-serial engine about 3.8k, hub 2.1k, crossbar 1.1k, DMA writer 1.0k, the
-reused v1 engines about 2.0k.
+blocks of slide 22: network (routers + packet helpers) about 9.7k LUTs,
+serial engine about 3.6k, hub 2.1k, crossbar 1.1k, DMA writer 1.1k, the
+reused v1 engines about 2.1k.
+
+This script synthesises every module on its own (not flattened), so each
+router keeps all five input FIFOs, including the ten on the edge of the mesh
+that have no neighbour; Vivado removes those, and it maps wide multiplexers
+better, so its numbers are lower (section 5.2). Before the timing fix
+([TIMING.md](TIMING.md)) the same script gave 18 550 LUTs and 7 698 FFs;
+the difference is the routers' front registers (5561 -> 8175 LUTs and
+1560 -> 2910 FFs for the six routers here, with all their FIFOs).
 
 Compared with v1 (about 2.3k LUTs for the three engines and the bridge),
 v2 is several times larger, as slide 22 warned ("more logic: the engine,
 6 routers, the hub and the DMA writer"); the six routers are the biggest
-single item. It still uses about a third of the Zynq-7020.
+single item. In Vivado, Way 1 uses under a fifth of the Zynq-7020's LUTs.
+
+### 5.2 Vivado, Way 1 (`zed2_top_standalone`)
+
+| run | LUTs | FFs | BRAM | WNS (100 MHz) | total on-chip power (estimate) |
+|---|---:|---:|---:|---:|---:|
+| first run (router before the timing fix) | 9 775 (18.4 %) | 5 326 (5.0 %) | 0 | -0.687 ns (failed, NoC router) | 0.234 W |
+| after the timing fix ([TIMING.md](TIMING.md)) | | | | | |
+
+Expected after the fix (from yosys before/after runs): roughly
+10 200-10 600 LUTs and about 6 100 FFs, WNS >= 0.
+
+- **BRAM = 0 in Way 1:** the 4 KB record RAM (`ssc2_axi_bram`) has no
+  reader on the board (its read port is not connected; only the testbench
+  looks inside), so Vivado removes it together with the record data path.
+  The DMA writer's handshakes and counters stay (the LEDs show them). In
+  Way 2 the records go to DDR, so no BRAM is needed there either.
+- Way 1 is smaller than the yosys total of section 5.1 because of that
+  trimming and because Vivado maps wide multiplexers better.
+- **Power** is Vivado's vectorless estimate (default toggle rates), not a
+  measurement; most of it is the device's static power and the clock tree.
 
 ## 6. NoC scalability
 

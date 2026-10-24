@@ -102,9 +102,9 @@ crossbar would be smaller and as fast for this traffic. The NoC's advantage
 only appears at about 16 nodes and only in clock speed (logic depth that
 does not grow with N) and in modularity: adding a node means adding a
 router at the edge instead of widening every arbiter and mux. That is the
-honest result slide 24 asked for. For v2 itself, the mesh costs about 10k
-of the design's 18k LUTs (yosys estimate), which is affordable on the
-53k-LUT Zynq-7020.
+honest result slide 24 asked for. For v2 itself, the network (6 routers and the packet helpers) costs about
+9.7k of the design's 21k LUTs (yosys estimate, per module), which is
+affordable on the 53k-LUT Zynq-7020.
 
 ## 5. Files
 

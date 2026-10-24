@@ -156,6 +156,7 @@ set_property top zed2_top_ps [current_fileset]
 update_compile_order -fileset sources_1
 
 # ---------------- synthesis, implementation, bitstream ----------------
+ssc2_impl_settings impl_1
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
 if {[get_property PROGRESS [get_runs impl_1]] ne "100%"} {

@@ -5,7 +5,7 @@ you never have to judge a waveform by eye to know whether the design works.
 
 | level | what | tool | time | pass looks like |
 |---|---|---|---|---|
-| 1 | each block on its own (13 unit testbenches) | Icarus or Vivado XSim | ~3 min | `ALL n CHECKS PASSED` for every test |
+| 1 | each block on its own (14 unit testbenches) | Icarus or Vivado XSim | ~3 min | `ALL n CHECKS PASSED` for every test |
 | 2 | the whole controller as the ARM sees it, the whole FPGA-only board image, and that image through its pins only (also as a gate netlist) | Icarus or XSim | ~10 min | `ALL 36 CHECKS PASSED`, `ALL 8 CHECKS PASSED`, `ALL 11 CHECKS PASSED` |
 | 3 | waveforms, when you want to see *why* | GTKWave or the Vivado wave window | - | the pictures described in section 4 |
 | 4 | the real ZedBoard | Vivado + Vitis + PC + logic analyser | 1-2 h | the results in sections 5 and 6 |
@@ -15,7 +15,7 @@ The slide-23 promises map onto these tests like this:
 | slide 23 | test | pass criterion |
 |---|---|---|
 | serial engine: UART, SPI and I2C programs match the v1 engines bit for bit | `tb_se_programs` | same bit streams, same bus events, same bytes (69 checks) |
-| routers: random traffic from all six nodes, no lost, repeated or reordered packets, no deadlock | `tb_noc_router`, `tb_noc_mesh` | scoreboard: every packet once, unchanged, in order per flow; long runs finish |
+| routers: random traffic from all six nodes, no lost, repeated or reordered packets, no deadlock | `tb_noc_router`, `tb_noc_mesh`, `tb_noc_router_equiv` | scoreboard: every packet once, unchanged, in order per flow; long runs finish |
 | crossbar: random switch requests, never mid-frame, never two drivers on one pin | `tb_xbar` | reference model checked every clock + "no switch mid-frame" property (1.2 million checks) |
 | hub and DMA: every record at its address, the pointer wraps, interrupt after 32 | `tb_hub`, `tb_dma_writer`, `tb_ssc2_system` | memory compared with a shadow copy; batch event exactly after record 32; 1 IRQ per 32 readings |
 | on the board: flash ID 20 BA 19, temperature 0x0C80 = 25.00 C | `tb_ssc2_system`, `tb_zed2_standalone`, then the board | section 5 and 6 |
@@ -47,7 +47,7 @@ ALL n CHECKS PASSED
 m OF n CHECKS FAILED        (and a "FAIL: ..." line for each failure)
 ```
 
-`run_unit.sh` finishes with `UNIT TESTS: 13 passed`, or lists the tests that
+`run_unit.sh` finishes with `UNIT TESTS: 14 passed`, or lists the tests that
 failed. The full log of each test is in `build/<test>.log`. Reference logs
 from a passing run are in `docs/sim_results/<test>.log`: compare yours with
 them (the lines printed by the testbench must match; XSim adds its own INFO
@@ -59,6 +59,7 @@ What each unit test proves, and its last lines when everything is right:
 |---|---|---|---|
 | `tb_noc_pkt` | packet sender/receiver, time base | 400 random packets through one link, flit kinds and padding, credit back-pressure (only 4 flits without credits), us/ms ticks | `A: 399 packets, 3548 flits, 399 good` / `ALL 19 CHECKS PASSED` |
 | `tb_noc_router` | one router | routing to every direction, priority beats round-robin, fairness, wormhole (packets never interleave), credits, latency per hop, 1 flit/clock streaming | `T1: one 200-flit packet LOCAL->EAST in 200 clocks = 1.000 flits/clock` / `ALL 1547 CHECKS PASSED` |
+| `tb_noc_router_equiv` | router timing fix | the timing-optimised router and the simple reference router (`sim/models/noc_router_ref.v`) side by side at all six mesh positions, same random inputs (with and without credit flow control, broken packets, resets): every output equal at every clock ([TIMING.md](TIMING.md)) | `(2,1): 50000 clocks, ... 0 mismatches` / `ALL 18 CHECKS PASSED` |
 | `tb_noc_mesh` | 2x3 mesh (+ a 4x4) | random all-to-all traffic with the packet helpers at every node: every packet exactly once, unchanged, in order per flow; hot-spot; no deadlock in long runs; all credits back | `A: 5742 packets ...` / `ALL 19 CHECKS PASSED` |
 | `tb_xbar` | pin crossbar | a cycle-accurate reference model checked every clock against random traffic and random switch requests; never switches mid-frame; FLOAT exactly 1 clock; SW_CYCLES/SW_EDGE | `COVERAGE: ...` / `ALL 1217806 CHECKS PASSED` |
 | `tb_se_engine` | serial engine | every instruction and JMP condition, shifts both ways, PUSH/PULL, side-set, delays, OD, CRC ("123456789" -> 0x29B1), fractional divider, EXEC, RESTART, and the slide-13 program at 115200 baud | `measured bit time 8680.0 ns (ideal 8680.6)` / `ALL 257 CHECKS PASSED` |
